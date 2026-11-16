@@ -164,26 +164,38 @@ export const PatientDetailsPage: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <Header title={`Patient Review — ${patient.name}`} />
 
-        <main className="p-6 space-y-6 max-w-7xl mx-auto w-full">
+        <main className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto w-full">
           {/* Back Navigation Bar & Sub-Navigation Tabs */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <button
-              onClick={() => {
-                if (user?.role === 'nurse') navigate('/nurse/dashboard');
-                else if (user?.role === 'laboratory') navigate('/laboratory/dashboard');
-                else if (user?.role === 'admin') navigate('/admin/dashboard');
-                else navigate('/doctor/dashboard');
-              }}
-              className="flex items-center text-xs font-bold text-slate-700 hover:text-teal-800"
-            >
-              <ChevronLeft className="w-4 h-4 mr-1" /> Back to Dashboard
-            </button>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => {
+                  if (user?.role === 'nurse') navigate('/nurse/dashboard');
+                  else if (user?.role === 'laboratory') navigate('/laboratory/dashboard');
+                  else if (user?.role === 'admin') navigate('/admin/dashboard');
+                  else navigate('/doctor/dashboard');
+                }}
+                className="flex items-center text-xs font-bold text-slate-700 hover:text-teal-800"
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" /> Back to Dashboard
+              </button>
 
-            {/* Patient Context Tabs */}
-            <div className="flex space-x-1 bg-gray-200 p-1 rounded-xl">
+              <button
+                onClick={() => {
+                  exportPatientPDF(patient, labResults.filter(l => l.patientId === patient.id), vitals, doctorRemarks.filter(r => r.patientId === patient.id));
+                  toast.success(`Exported LCIIS Patient Summary PDF for ${patient.name}`);
+                }}
+                className="px-2.5 sm:px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-lg shadow-xs flex items-center space-x-1 sm:hidden"
+              >
+                <FileText className="w-3.5 h-3.5" /> <span>Export PDF</span>
+              </button>
+            </div>
+
+            {/* Patient Context Tabs - Horizontally scrollable on mobile */}
+            <div className="flex space-x-1 bg-gray-200 p-1 rounded-xl overflow-x-auto max-w-full no-scrollbar">
               <button
                 onClick={() => setActiveMainTab('overview')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center space-x-1 ${
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center space-x-1 shrink-0 ${
                   activeMainTab === 'overview' ? 'bg-white text-teal-800 shadow-xs' : 'text-gray-600 hover:text-slate-900'
                 }`}
               >
@@ -192,7 +204,7 @@ export const PatientDetailsPage: React.FC = () => {
               </button>
               <button
                 onClick={() => setActiveMainTab('ehr_history')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center space-x-1 ${
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center space-x-1 shrink-0 ${
                   activeMainTab === 'ehr_history' ? 'bg-white text-teal-800 shadow-xs' : 'text-gray-600 hover:text-slate-900'
                 }`}
               >
@@ -201,45 +213,45 @@ export const PatientDetailsPage: React.FC = () => {
               </button>
               <button
                 onClick={() => navigate(`/doctor/patients/${patient.id}/labs`)}
-                className="px-3 py-1.5 text-xs font-bold rounded-lg text-gray-600 hover:text-slate-900 transition-colors flex items-center space-x-1"
+                className="px-3 py-1.5 text-xs font-bold rounded-lg text-gray-600 hover:text-slate-900 transition-colors flex items-center space-x-1 shrink-0"
               >
                 <FlaskConical className="w-3.5 h-3.5" />
                 <span>Lab Investigations</span>
               </button>
               <button
                 onClick={() => navigate(`/doctor/patients/${patient.id}/vitals`)}
-                className="px-3 py-1.5 text-xs font-bold rounded-lg text-gray-600 hover:text-slate-900 transition-colors flex items-center space-x-1"
+                className="px-3 py-1.5 text-xs font-bold rounded-lg text-gray-600 hover:text-slate-900 transition-colors flex items-center space-x-1 shrink-0"
               >
                 <Activity className="w-3.5 h-3.5" />
                 <span>Live Vitals Telemetry</span>
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <button
                 onClick={() => setIsTransferModalOpen(true)}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs flex items-center space-x-1"
+                className="px-2.5 sm:px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] sm:text-xs font-bold rounded-lg shadow-xs flex items-center space-x-1"
                 title="Transfer patient to General Ward upon recovery or change care location"
               >
-                <ArrowRightLeft className="w-3.5 h-3.5" /> <span>Transfer / Step-Down</span>
+                <ArrowRightLeft className="w-3.5 h-3.5" /> <span>Step-Down</span>
               </button>
               <button
                 onClick={() => setIsRemarkModalOpen(true)}
-                className="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-lg shadow-xs flex items-center space-x-1"
+                className="px-2.5 sm:px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white text-[11px] sm:text-xs font-bold rounded-lg shadow-xs flex items-center space-x-1"
               >
                 <Plus className="w-3.5 h-3.5" /> <span>Add Note</span>
               </button>
               <button
                 onClick={() => setIsMedModalOpen(true)}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg shadow-xs flex items-center space-x-1"
+                className="px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-[11px] sm:text-xs font-bold rounded-lg shadow-xs flex items-center space-x-1"
               >
-                <Pill className="w-3.5 h-3.5" /> <span>Add Medication</span>
+                <Pill className="w-3.5 h-3.5" /> <span>Medication</span>
               </button>
               <button
                 onClick={() => setIsInterventionModalOpen(true)}
-                className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg shadow-xs flex items-center space-x-1"
+                className="px-2.5 sm:px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] sm:text-xs font-bold rounded-lg shadow-xs flex items-center space-x-1"
               >
-                <Stethoscope className="w-3.5 h-3.5" /> <span>Care Action</span>
+                <Stethoscope className="w-3.5 h-3.5" /> <span>Action</span>
               </button>
               <button
                 onClick={async () => {
@@ -252,17 +264,17 @@ export const PatientDetailsPage: React.FC = () => {
                     toast.error('Failed to trigger watch alert');
                   }
                 }}
-                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-black rounded-lg shadow-xs flex items-center space-x-1"
+                className="px-2.5 sm:px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-[11px] sm:text-xs font-black rounded-lg shadow-xs flex items-center space-x-1"
                 title="Trigger Critical Alert for this patient on the Nurse Watch hardware"
               >
-                <Bell className="w-3.5 h-3.5" /> <span>Alert Nurse Watch</span>
+                <Bell className="w-3.5 h-3.5" /> <span>Alert Watch</span>
               </button>
               <button
                 onClick={() => {
                   exportPatientPDF(patient, labResults.filter(l => l.patientId === patient.id), vitals, doctorRemarks.filter(r => r.patientId === patient.id));
                   toast.success(`Exported LCIIS Patient Summary PDF for ${patient.name}`);
                 }}
-                className="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-lg shadow-xs flex items-center space-x-1"
+                className="hidden sm:flex px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-lg shadow-xs items-center space-x-1"
               >
                 <FileText className="w-3.5 h-3.5" /> <span>Export PDF</span>
               </button>
@@ -270,10 +282,10 @@ export const PatientDetailsPage: React.FC = () => {
           </div>
 
           {/* Patient Header Card */}
-          <div className="card-clinical p-5 bg-white flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="card-clinical p-3.5 sm:p-5 bg-white flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sm:gap-4">
             <div>
-              <div className="flex items-center space-x-3">
-                <h1 className="text-xl font-black text-slate-900">{patient.name}</h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-lg sm:text-xl font-black text-slate-900">{patient.name}</h1>
                 <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-md font-bold">
                   {patient.hospitalId}
                 </span>
@@ -287,7 +299,7 @@ export const PatientDetailsPage: React.FC = () => {
                   </span>
                 )}
               </div>
-              <div className="text-xs text-gray-500 font-medium mt-1 flex flex-wrap gap-x-4 gap-y-1">
+              <div className="text-[11px] sm:text-xs text-gray-500 font-medium mt-1 flex flex-wrap gap-x-3 sm:gap-x-4 gap-y-1">
                 <span>Age: <strong>{patient.age} yrs</strong> ({patient.gender})</span>
                 <span>Ward: <strong>{patient.ward}</strong></span>
                 <span>Bed: <strong>{patient.bed}</strong></span>
@@ -295,15 +307,15 @@ export const PatientDetailsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center space-x-3">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               <button
                 onClick={() => setIsTransferModalOpen(true)}
-                className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center space-x-1.5 active:scale-95"
+                className="flex-1 sm:flex-none px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center space-x-1.5 active:scale-95"
               >
-                <ArrowRightLeft className="w-4 h-4" />
-                <span>{patient.ward.includes('ICU') ? 'Step-Down to General Ward' : 'Transfer / Change Ward'}</span>
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>{patient.ward.includes('ICU') ? 'Step-Down' : 'Transfer'}</span>
               </button>
-              <span className={`px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider ${
+              <span className={`flex-1 sm:flex-none text-center px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider ${
                 riskAssessment.riskBand === 'CRITICAL' ? 'bg-red-500 text-white' :
                 riskAssessment.riskBand === 'HIGH RISK' ? 'bg-orange-500 text-white' :
                 riskAssessment.riskBand === 'MONITOR' ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white'

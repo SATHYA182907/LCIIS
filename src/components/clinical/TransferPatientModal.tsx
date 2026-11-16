@@ -132,38 +132,38 @@ export const TransferPatientModal: React.FC<TransferPatientModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200 select-none">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200 select-none">
         {/* Header */}
-        <div className="bg-slate-900 text-white p-5 flex justify-between items-start">
+        <div className="bg-slate-900 text-white p-4 sm:p-5 flex justify-between items-start shrink-0">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-teal-500/20 border border-teal-400/40 text-teal-400 flex items-center justify-center font-bold">
+            <div className="w-10 h-10 rounded-xl bg-teal-500/20 border border-teal-400/40 text-teal-400 flex items-center justify-center font-bold shrink-0">
               <ArrowRightLeft className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-black text-white flex items-center space-x-2">
+              <h3 className="text-sm sm:text-base font-black text-white flex items-center space-x-2">
                 <span>Patient Ward Transfer & Step-Down</span>
               </h3>
-              <p className="text-xs text-slate-300">
+              <p className="text-[11px] sm:text-xs text-slate-300">
                 {patient.name} ({patient.hospitalId}) • Current: <span className="text-amber-400 font-bold">{patient.ward} ({patient.bed})</span>
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-4 text-xs overflow-y-auto flex-1">
           {/* Preset Buttons */}
           <div>
             <label className="block text-[11px] font-extrabold uppercase text-slate-500 tracking-wider mb-2">
               Quick Transfer Presets
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => handleApplyPreset('GENERAL')}

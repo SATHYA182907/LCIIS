@@ -136,37 +136,37 @@ export const NurseDashboard: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <Header title="Nurse Ward Monitoring & Shift Analytics" />
 
-        <main className="p-6 space-y-6 max-w-7xl mx-auto w-full pb-12">
+        <main className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto w-full pb-12">
           {/* Header Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="card-clinical p-4 bg-white border-l-4 border-l-teal-600 shadow-xs">
-              <div className="text-xs text-gray-500 font-semibold">Assigned Ward Patients</div>
-              <div className="text-3xl font-black text-slate-900 mt-1">{assignedPatients.length}</div>
-              <div className="text-[10px] text-teal-700 font-bold mt-1">Active Bed Monitoring</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
+            <div className="card-clinical p-3 sm:p-4 bg-white border-l-4 border-l-teal-600 shadow-xs">
+              <div className="text-[10px] sm:text-xs text-gray-500 font-semibold truncate">Assigned Ward Patients</div>
+              <div className="text-2xl sm:text-3xl font-black text-slate-900 mt-1">{assignedPatients.length}</div>
+              <div className="text-[9px] sm:text-[10px] text-teal-700 font-bold mt-1 truncate">Active Monitoring</div>
             </div>
-            <div className="card-clinical p-4 border-l-4 border-l-red-500 bg-red-50/30 shadow-xs">
-              <div className="text-xs text-red-800 font-semibold">Requiring Attention</div>
-              <div className="text-3xl font-black text-red-900 mt-1">{criticalCount}</div>
-              <div className="text-[10px] text-red-700 font-bold mt-1">High Risk / Critical Flag</div>
+            <div className="card-clinical p-3 sm:p-4 border-l-4 border-l-red-500 bg-red-50/30 shadow-xs">
+              <div className="text-[10px] sm:text-xs text-red-800 font-semibold truncate">Requiring Attention</div>
+              <div className="text-2xl sm:text-3xl font-black text-red-900 mt-1">{criticalCount}</div>
+              <div className="text-[9px] sm:text-[10px] text-red-700 font-bold mt-1 truncate">High Risk Flag</div>
             </div>
-            <div className="card-clinical p-4 bg-teal-50/50 border border-teal-100 shadow-xs">
-              <div className="text-xs text-teal-800 font-semibold">Active Ward Alerts</div>
-              <div className="text-3xl font-black text-teal-900 mt-1">{alerts.length}</div>
-              <div className="text-[10px] text-teal-700 font-bold mt-1 font-mono">Live Advisory Engine</div>
+            <div className="card-clinical p-3 sm:p-4 bg-teal-50/50 border border-teal-100 shadow-xs">
+              <div className="text-[10px] sm:text-xs text-teal-800 font-semibold truncate">Active Ward Alerts</div>
+              <div className="text-2xl sm:text-3xl font-black text-teal-900 mt-1">{alerts.length}</div>
+              <div className="text-[9px] sm:text-[10px] text-teal-700 font-bold mt-1 font-mono truncate">Live Advisory</div>
             </div>
-            <div className="card-clinical p-4 flex items-center justify-between bg-white shadow-xs">
+            <div className="card-clinical p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white shadow-xs">
               <div>
-                <div className="text-xs text-gray-500 font-semibold">Nursing Action</div>
-                <div className="text-xs font-bold text-slate-800 mt-1">Record Patient Obs</div>
+                <div className="text-[10px] sm:text-xs text-gray-500 font-semibold">Nursing Action</div>
+                <div className="text-xs font-bold text-slate-800 mt-0.5 truncate">Patient Obs</div>
               </div>
               <button
                 onClick={() => {
                   setSelectedPatientForObs(assignedPatients[0]?.id || '');
                   setIsObsModalOpen(true);
                 }}
-                className="px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs rounded-lg shadow-xs flex items-center space-x-1 transition-all"
+                className="w-full sm:w-auto px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs rounded-lg shadow-xs flex items-center justify-center space-x-1 transition-all"
               >
-                <Plus className="w-4 h-4" /> <span>Add Obs</span>
+                <Plus className="w-3.5 h-3.5" /> <span>Add Obs</span>
               </button>
             </div>
           </div>

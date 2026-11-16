@@ -22,7 +22,8 @@ import {
   BellRing,
   ChevronRight,
   Radio,
-  ArrowRightLeft
+  ArrowRightLeft,
+  ExternalLink
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -41,7 +42,16 @@ import {
 } from 'recharts';
 
 export const DoctorDashboard: React.FC = () => {
-  const { patients, alerts, isFirebaseConnected, isLoadingFirebase, firebaseError, liveVitalsMap, acknowledgeAlert } = useRealtime();
+  const {
+    patients,
+    alerts,
+    isFirebaseConnected,
+    isLoadingFirebase,
+    firebaseError,
+    liveVitalsMap,
+    acknowledgeAlert,
+    retryFirebaseConnection
+  } = useRealtime();
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -238,21 +248,21 @@ export const DoctorDashboard: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <Header title="Doctor Dashboard" />
 
-        <main className="p-6 space-y-6 max-w-7xl mx-auto w-full pb-12">
+        <main className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto w-full pb-12">
           {/* Top Greeting & Firebase Realtime Telemetry Status */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
             <div>
-              <h2 className="text-xl font-extrabold text-slate-900 flex items-center space-x-2">
+              <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 flex items-center space-x-2">
                 <span>Good morning, {doctorName}</span>
                 <span className="inline-block w-2.5 h-2.5 rounded-full bg-teal-500 animate-ping" />
               </h2>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
+              <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5">
                 Intensive Care Unit & Clinical Wards • Real-Time Clinical Surveillance Engine
               </p>
             </div>
 
-            <div className="flex items-center space-x-3">
-              <div className={`px-3 py-1.5 rounded-full text-xs font-bold border flex items-center space-x-2 ${
+            <div className="flex items-center space-x-3 self-start sm:self-auto">
+              <div className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-bold border flex items-center space-x-2 ${
                 isFirebaseConnected
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
                   : 'bg-amber-50 text-amber-800 border-amber-300'
@@ -264,132 +274,165 @@ export const DoctorDashboard: React.FC = () => {
           </div>
 
           {firebaseError && (
-            <div className="p-4 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl flex items-start space-x-3 font-medium">
-              <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-              <div>
-                <div className="font-bold">Firebase Connection Notice</div>
-                <div>{firebaseError}</div>
+            <div className="p-3.5 sm:p-4 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-xl shadow-xs">
+              <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
+                <div className="flex items-start space-x-3">
+                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <div className="font-bold text-xs sm:text-sm text-amber-950 flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <span>Firebase Realtime Database Rules Notice</span>
+                      <span className="text-[10px] bg-amber-200/70 text-amber-900 px-2 py-0.5 rounded-full font-mono font-medium">
+                        permission_denied
+                      </span>
+                    </div>
+                    <div className="text-amber-800 text-[11px] sm:text-xs leading-relaxed">
+                      Firebase Realtime Database rejected client requests because security rules are locked. In Firebase Console &gt; Realtime Database &gt; Rules, set <code className="bg-amber-100 px-1.5 py-0.5 rounded text-amber-950 font-mono font-semibold">{'{ "rules": { ".read": true, ".write": true } }'}</code> and click <strong>Publish</strong>.
+                    </div>
+                    <div className="text-[10px] sm:text-[11px] text-amber-700 italic pt-0.5">
+                      ✓ Running on high-fidelity clinical simulation dataset in the meantime so all charts and census data remain fully functional.
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 w-full sm:w-auto">
+                  <a
+                    href="https://console.firebase.google.com/project/greenminds-2e90e/database/greenminds-2e90e-default-rtdb/rules"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg shadow-xs transition-colors text-xs"
+                  >
+                    <span>Open Firebase Rules</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                  <button
+                    onClick={() => retryFirebaseConnection()}
+                    disabled={isLoadingFirebase}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-amber-300 text-amber-900 font-semibold rounded-lg shadow-xs transition-colors disabled:opacity-50 text-xs"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingFirebase ? 'animate-spin' : ''}`} />
+                    <span>{isLoadingFirebase ? 'Connecting...' : 'Retry Connection'}</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Metric Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="card-clinical p-4 bg-white border-l-4 border-l-teal-600 shadow-xs hover:shadow-md transition-shadow">
+          {/* Metric Cards - 2 cols on mobile, 5 on desktop */}
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-4">
+            <div className="card-clinical p-3 sm:p-4 bg-white border-l-4 border-l-teal-600 shadow-xs hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Patients</div>
-                <Stethoscope className="w-4 h-4 text-teal-600" />
+                <div className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">Total Patients</div>
+                <Stethoscope className="w-4 h-4 text-teal-600 shrink-0" />
               </div>
-              <div className="text-2xl font-black text-slate-900 mt-1">{totalCount}</div>
-              <div className="text-[10px] font-medium text-teal-700 mt-1 flex items-center space-x-1">
-                <TrendingUp className="w-3 h-3" />
-                <span>Active Clinical Census</span>
+              <div className="text-xl sm:text-2xl font-black text-slate-900 mt-1">{totalCount}</div>
+              <div className="text-[9px] sm:text-[10px] font-medium text-teal-700 mt-1 flex items-center space-x-1 truncate">
+                <TrendingUp className="w-3 h-3 shrink-0" />
+                <span className="truncate">Active Census</span>
               </div>
             </div>
 
-            <div className="card-clinical p-4 bg-white border-l-4 border-l-amber-500 shadow-xs hover:shadow-md transition-shadow">
+            <div className="card-clinical p-3 sm:p-4 bg-white border-l-4 border-l-amber-500 shadow-xs hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] font-bold text-amber-900 uppercase tracking-wider">Needs Attention</div>
-                <Activity className="w-4 h-4 text-amber-600" />
+                <div className="text-[9px] sm:text-[10px] font-bold text-amber-900 uppercase tracking-wider truncate">Needs Attention</div>
+                <Activity className="w-4 h-4 text-amber-600 shrink-0" />
               </div>
-              <div className="text-2xl font-black text-amber-900 mt-1">{needsAttentionCount}</div>
-              <div className="text-[10px] font-medium text-amber-700 mt-1">Requires clinical observation</div>
+              <div className="text-xl sm:text-2xl font-black text-amber-900 mt-1">{needsAttentionCount}</div>
+              <div className="text-[9px] sm:text-[10px] font-medium text-amber-700 mt-1 truncate">Observation</div>
             </div>
 
-            <div className="card-clinical p-4 bg-white border-l-4 border-l-orange-500 shadow-xs hover:shadow-md transition-shadow">
+            <div className="card-clinical p-3 sm:p-4 bg-white border-l-4 border-l-orange-500 shadow-xs hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] font-bold text-orange-900 uppercase tracking-wider">High Risk</div>
-                <ShieldAlert className="w-4 h-4 text-orange-600" />
+                <div className="text-[9px] sm:text-[10px] font-bold text-orange-900 uppercase tracking-wider truncate">High Risk</div>
+                <ShieldAlert className="w-4 h-4 text-orange-600 shrink-0" />
               </div>
-              <div className="text-2xl font-black text-orange-900 mt-1">{highRiskCount}</div>
-              <div className="text-[10px] font-medium text-orange-700 mt-1">Advisory risk score &gt; 50%</div>
+              <div className="text-xl sm:text-2xl font-black text-orange-900 mt-1">{highRiskCount}</div>
+              <div className="text-[9px] sm:text-[10px] font-medium text-orange-700 mt-1 truncate">Risk &gt; 50%</div>
             </div>
 
-            <div className="card-clinical p-4 bg-white border-l-4 border-l-red-600 shadow-xs hover:shadow-md transition-shadow">
+            <div className="card-clinical p-3 sm:p-4 bg-white border-l-4 border-l-red-600 shadow-xs hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] font-bold text-red-900 uppercase tracking-wider">Critical</div>
-                <HeartPulse className="w-4 h-4 text-red-600 animate-pulse" />
+                <div className="text-[9px] sm:text-[10px] font-bold text-red-900 uppercase tracking-wider truncate">Critical</div>
+                <HeartPulse className="w-4 h-4 text-red-600 animate-pulse shrink-0" />
               </div>
-              <div className="text-2xl font-black text-red-900 mt-1">{criticalCount}</div>
-              <div className="text-[10px] font-medium text-red-700 mt-1">Immediate intervention</div>
+              <div className="text-xl sm:text-2xl font-black text-red-900 mt-1">{criticalCount}</div>
+              <div className="text-[9px] sm:text-[10px] font-medium text-red-700 mt-1 truncate">Immediate action</div>
             </div>
 
-            <div className="card-clinical p-4 bg-white border-l-4 border-l-cyan-600 shadow-xs hover:shadow-md transition-shadow">
+            <div className="col-span-2 sm:col-span-1 lg:col-span-1 card-clinical p-3 sm:p-4 bg-white border-l-4 border-l-cyan-600 shadow-xs hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] font-bold text-cyan-900 uppercase tracking-wider">Active Alerts</div>
-                <BellRing className="w-4 h-4 text-cyan-600" />
+                <div className="text-[9px] sm:text-[10px] font-bold text-cyan-900 uppercase tracking-wider truncate">Active Alerts</div>
+                <BellRing className="w-4 h-4 text-cyan-600 shrink-0" />
               </div>
-              <div className="text-2xl font-black text-cyan-900 mt-1">{activeAlertsCount}</div>
-              <div className="text-[10px] font-medium text-cyan-700 mt-1">Physiological breaches</div>
+              <div className="text-xl sm:text-2xl font-black text-cyan-900 mt-1">{activeAlertsCount}</div>
+              <div className="text-[9px] sm:text-[10px] font-medium text-cyan-700 mt-1 truncate">Physiological breaches</div>
             </div>
           </div>
 
           {/* Real-time Vitals Trends & Clinical Trajectory Graph */}
-          <div className="card-clinical p-5 bg-white shadow-xs border border-slate-200/80">
+          <div className="card-clinical p-3.5 sm:p-5 bg-white shadow-xs border border-slate-200/80">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
               <div>
-                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide flex items-center space-x-2">
-                  <TrendingUp className="w-4 h-4 text-teal-600" />
-                  <span>
+                <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 uppercase tracking-wide flex items-center space-x-2">
+                  <TrendingUp className="w-4 h-4 text-teal-600 shrink-0" />
+                  <span className="truncate">
                     Live Vitals Trajectory: {selectedPatientObj?.name || 'Patient'}
                   </span>
                 </h3>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Real-time physiological vital stream for {selectedPatientObj?.name} ({selectedPatientObj?.hospitalId}) • {selectedPatientObj?.ward} {selectedPatientObj?.bed}
+                <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5 line-clamp-1 sm:line-clamp-none">
+                  Real-time vital stream for {selectedPatientObj?.name} ({selectedPatientObj?.hospitalId}) • {selectedPatientObj?.ward} {selectedPatientObj?.bed}
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3">
                 {/* Patient Selector Dropdown */}
-                <div className="flex items-center space-x-2">
-                  <span className="text-xs font-bold text-slate-600">Select Patient:</span>
+                <div className="flex items-center space-x-2 w-full sm:w-auto">
+                  <span className="text-[11px] sm:text-xs font-bold text-slate-600 shrink-0">Select:</span>
                   <select
                     value={selectedPatientIdFilter}
                     onChange={(e) => setSelectedPatientIdFilter(e.target.value)}
-                    className="bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold px-3 py-1.5 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:outline-hidden cursor-pointer"
+                    className="w-full sm:w-auto max-w-full bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold px-2.5 py-1.5 text-slate-900 focus:ring-2 focus:ring-teal-500 focus:outline-hidden cursor-pointer truncate"
                   >
                     {patients.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name} ({p.hospitalId}) — {p.bed} {p.deviceId ? '• Hardware Connected' : '• No Hardware'}
+                        {p.name} ({p.hospitalId}) — {p.bed} {p.deviceId ? '• Hardware' : ''}
                       </option>
                     ))}
                   </select>
                 </div>
 
                 {/* Timeframe Selector */}
-                <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl">
+                <div className="grid grid-cols-3 sm:flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
                   <button
                     type="button"
                     onClick={() => setTrendTimeframe('24h')}
-                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                    className={`px-2 sm:px-3 py-1 text-center text-[11px] sm:text-xs font-bold rounded-lg transition-all ${
                       trendTimeframe === '24h'
                         ? 'bg-teal-700 text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                     }`}
                   >
-                    Live 24h Trend
+                    Live 24h
                   </button>
                   <button
                     type="button"
                     onClick={() => setTrendTimeframe('8h')}
-                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                    className={`px-2 sm:px-3 py-1 text-center text-[11px] sm:text-xs font-bold rounded-lg transition-all ${
                       trendTimeframe === '8h'
                         ? 'bg-teal-700 text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                     }`}
                   >
-                    Shift View (8h)
+                    Shift (8h)
                   </button>
                   <button
                     type="button"
                     onClick={() => setTrendTimeframe('7d')}
-                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                    className={`px-2 sm:px-3 py-1 text-center text-[11px] sm:text-xs font-bold rounded-lg transition-all ${
                       trendTimeframe === '7d'
                         ? 'bg-teal-700 text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                     }`}
                   >
-                    7 Days History
+                    7 Days
                   </button>
                 </div>
               </div>
@@ -627,66 +670,125 @@ export const DoctorDashboard: React.FC = () => {
                 All monitored patients are currently stable.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[680px] text-left text-xs text-gray-600">
-                  <thead className="bg-gray-100/70 text-gray-700 uppercase font-semibold text-[10px] tracking-wider border-b border-gray-200">
-                    <tr>
-                      <th className="p-3.5">Patient</th>
-                      <th className="p-3.5">Location / Bed</th>
-                      <th className="p-3.5">Status</th>
-                      <th className="p-3.5">Risk Score</th>
-                      <th className="p-3.5">Primary Complaint</th>
-                      <th className="p-3.5 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 font-medium">
-                    {patientsNeedingAttention.map((p) => (
-                      <tr key={p.id || p.hospitalId} className="hover:bg-teal-50/30 transition-colors">
-                        <td className="p-3.5">
-                          <div className="font-bold text-slate-900">{p.name}</div>
-                          <div className="text-[10px] text-gray-500">{p.hospitalId || p.id} • Age {p.age}</div>
-                        </td>
-                        <td className="p-3.5">
-                          <div className="font-bold text-gray-800">{p.ward}</div>
-                          <div className="text-[10px] text-gray-500">{p.bed}</div>
-                        </td>
-                        <td className="p-3.5">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                            p.currentStatus === 'CRITICAL' ? 'bg-red-100 text-red-700' :
-                            p.currentStatus === 'HIGH RISK' ? 'bg-orange-100 text-orange-700' : 'bg-amber-100 text-amber-700'
-                          }`}>
-                            {p.currentStatus}
-                          </span>
-                        </td>
-                        <td className="p-3.5 font-bold text-slate-900">{p.advisoryRisk || 0}%</td>
-                        <td className="p-3.5 font-medium text-gray-700">
-                          {p.primaryComplaint || 'Monitoring serial vitals'}
-                        </td>
-                        <td className="p-3.5 text-right flex items-center justify-end space-x-2">
-                          <button
-                            onClick={() => {
-                              setSelectedTransferPatient(p);
-                              setIsTransferModalOpen(true);
-                            }}
-                            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-all flex items-center space-x-1 shadow-xs"
-                            title="Step-down or transfer patient ward location"
-                          >
-                            <ArrowRightLeft className="w-3.5 h-3.5" />
-                            <span>Step-Down</span>
-                          </button>
-                          <button
-                            onClick={() => navigate(`/doctor/patients/${p.id || p.hospitalId}`)}
-                            className="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-lg text-xs transition-all flex items-center space-x-1 shadow-xs"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>Review</span>
-                          </button>
-                        </td>
+              <>
+                {/* Mobile Cards View (Hidden on Tablet/Desktop) */}
+                <div className="block md:hidden p-3 space-y-3 divide-y divide-gray-100">
+                  {patientsNeedingAttention.map((p) => (
+                    <div key={p.id || p.hospitalId} className="pt-3 first:pt-0 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-extrabold text-sm text-slate-900">{p.name}</div>
+                          <div className="text-[10px] text-gray-500 font-mono">{p.hospitalId || p.id} • Age {p.age}</div>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${
+                          p.currentStatus === 'CRITICAL' ? 'bg-red-100 text-red-700' :
+                          p.currentStatus === 'HIGH RISK' ? 'bg-orange-100 text-orange-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {p.currentStatus}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-50 p-2 rounded-lg border border-slate-100">
+                        <div>
+                          <span className="text-gray-400 font-semibold block text-[10px]">Location</span>
+                          <span className="font-bold text-slate-800">{p.ward} ({p.bed})</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 font-semibold block text-[10px]">Risk Score</span>
+                          <span className="font-bold text-slate-900">{p.advisoryRisk || 0}%</span>
+                        </div>
+                      </div>
+
+                      <div className="text-[11px] text-gray-600 font-medium">
+                        <span className="text-gray-400 font-semibold">Complaint: </span>
+                        {p.primaryComplaint || 'Monitoring serial vitals'}
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() => {
+                            setSelectedTransferPatient(p);
+                            setIsTransferModalOpen(true);
+                          }}
+                          className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-all flex items-center justify-center space-x-1 shadow-xs"
+                        >
+                          <ArrowRightLeft className="w-3.5 h-3.5" />
+                          <span>Step-Down</span>
+                        </button>
+                        <button
+                          onClick={() => navigate(`/doctor/patients/${p.id || p.hospitalId}`)}
+                          className="flex-1 py-1.5 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-lg text-xs transition-all flex items-center justify-center space-x-1 shadow-xs"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Review</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop Table View (Hidden on Mobile) */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full min-w-[680px] text-left text-xs text-gray-600">
+                    <thead className="bg-gray-100/70 text-gray-700 uppercase font-semibold text-[10px] tracking-wider border-b border-gray-200">
+                      <tr>
+                        <th className="p-3.5">Patient</th>
+                        <th className="p-3.5">Location / Bed</th>
+                        <th className="p-3.5">Status</th>
+                        <th className="p-3.5">Risk Score</th>
+                        <th className="p-3.5">Primary Complaint</th>
+                        <th className="p-3.5 text-right">Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 font-medium">
+                      {patientsNeedingAttention.map((p) => (
+                        <tr key={p.id || p.hospitalId} className="hover:bg-teal-50/30 transition-colors">
+                          <td className="p-3.5">
+                            <div className="font-bold text-slate-900">{p.name}</div>
+                            <div className="text-[10px] text-gray-500">{p.hospitalId || p.id} • Age {p.age}</div>
+                          </td>
+                          <td className="p-3.5">
+                            <div className="font-bold text-gray-800">{p.ward}</div>
+                            <div className="text-[10px] text-gray-500">{p.bed}</div>
+                          </td>
+                          <td className="p-3.5">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                              p.currentStatus === 'CRITICAL' ? 'bg-red-100 text-red-700' :
+                              p.currentStatus === 'HIGH RISK' ? 'bg-orange-100 text-orange-700' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {p.currentStatus}
+                            </span>
+                          </td>
+                          <td className="p-3.5 font-bold text-slate-900">{p.advisoryRisk || 0}%</td>
+                          <td className="p-3.5 font-medium text-gray-700">
+                            {p.primaryComplaint || 'Monitoring serial vitals'}
+                          </td>
+                          <td className="p-3.5 text-right flex items-center justify-end space-x-2">
+                            <button
+                              onClick={() => {
+                                setSelectedTransferPatient(p);
+                                setIsTransferModalOpen(true);
+                              }}
+                              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-all flex items-center space-x-1 shadow-xs"
+                              title="Step-down or transfer patient ward location"
+                            >
+                              <ArrowRightLeft className="w-3.5 h-3.5" />
+                              <span>Step-Down</span>
+                            </button>
+                            <button
+                              onClick={() => navigate(`/doctor/patients/${p.id || p.hospitalId}`)}
+                              className="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-lg text-xs transition-all flex items-center space-x-1 shadow-xs"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Review</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
 
@@ -747,23 +849,23 @@ export const DoctorDashboard: React.FC = () => {
                           <p className="text-xs font-medium text-slate-700">{alert.summary}</p>
                         </div>
 
-                        <div className="flex items-center space-x-2 shrink-0">
+                        <div className="flex items-center space-x-2 w-full sm:w-auto justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/50">
                           {isAcked ? (
-                            <span className="px-2.5 py-1 bg-slate-100 text-slate-600 font-bold text-[11px] rounded-lg border border-slate-200 flex items-center space-x-1">
+                            <span className="flex-1 sm:flex-none justify-center px-2.5 py-1.5 bg-slate-100 text-slate-600 font-bold text-[11px] rounded-lg border border-slate-200 flex items-center space-x-1">
                               <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                               <span>Acknowledged</span>
                             </span>
                           ) : (
                             <button
                               onClick={() => handleAcknowledge(alert.id)}
-                              className="px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs rounded-lg shadow-xs transition-all"
+                              className="flex-1 sm:flex-none px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs rounded-lg shadow-xs transition-all"
                             >
                               Acknowledge
                             </button>
                           )}
                           <button
                             onClick={() => navigate(`/doctor/patients/${alert.patientId}`)}
-                            className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-lg transition-all"
+                            className="flex-1 sm:flex-none px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-lg transition-all"
                           >
                             Inspect
                           </button>

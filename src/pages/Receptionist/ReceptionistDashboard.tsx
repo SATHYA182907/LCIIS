@@ -35,18 +35,18 @@ export const ReceptionistDashboard: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <Header title="Receptionist Dashboard" />
 
-        <main className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto w-full">
+        <main className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto w-full">
           {/* Top Greeting & Action Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Welcome, {receptionistName}</h2>
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900">Welcome, {receptionistName}</h2>
               <p className="text-xs text-gray-500">Patient Intake & Registration Workstation</p>
             </div>
 
-            <div className="flex items-center space-x-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
               <button
                 onClick={() => navigate('/receptionist/register-patient')}
-                className="px-4 py-2.5 bg-gradient-to-r from-teal-700 to-teal-800 hover:from-teal-800 hover:to-teal-900 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-teal-900/20 transition-all flex items-center space-x-2"
+                className="px-3.5 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-teal-700 to-teal-800 hover:from-teal-800 hover:to-teal-900 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-teal-900/20 transition-all flex items-center justify-center space-x-2"
               >
                 <UserPlus className="w-4 h-4" />
                 <span>Register New Patient</span>
@@ -54,16 +54,16 @@ export const ReceptionistDashboard: React.FC = () => {
 
               <button
                 onClick={() => navigate('/receptionist/search')}
-                className="px-3 py-2.5 bg-white hover:bg-gray-50 text-slate-700 font-bold text-xs rounded-xl border border-gray-200 shadow-2xs flex items-center space-x-1.5 transition-all"
+                className="px-3 py-2 sm:py-2.5 bg-white hover:bg-gray-50 text-slate-700 font-bold text-xs rounded-xl border border-gray-200 shadow-2xs flex items-center justify-center space-x-1.5 transition-all"
               >
                 <Search className="w-4 h-4 text-gray-500" />
-                <span className="hidden sm:inline">Search Patient</span>
+                <span>Search Patient</span>
               </button>
             </div>
           </div>
 
           {/* 3 Simple Operational Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <div className="card-clinical p-4 bg-white border-l-4 border-l-teal-700">
               <div className="flex items-center justify-between text-xs text-gray-500 font-semibold">
                 <span>Total Patients Registered</span>

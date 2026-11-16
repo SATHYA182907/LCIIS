@@ -37,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({ title = 'Dashboard' }) => {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight truncate">{title}</h1>
+          <h1 className="text-sm sm:text-lg font-bold text-slate-900 tracking-tight truncate max-w-[150px] sm:max-w-none">{title}</h1>
           <div className="hidden md:flex items-center space-x-1.5 text-xs text-gray-500 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 shrink-0">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="font-semibold text-emerald-800">Connected</span>
@@ -45,13 +45,14 @@ export const Header: React.FC<HeaderProps> = ({ title = 'Dashboard' }) => {
         </div>
 
         {/* Right Section: Actions & Profile */}
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-1.5 sm:space-x-3 shrink-0">
           {/* Cmd+K Search */}
           <button
             onClick={() => setIsSearchOpen(true)}
-            className="flex items-center space-x-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-500 px-3 py-1.5 rounded-lg text-xs transition-colors"
+            className="flex items-center space-x-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-500 p-2 sm:px-3 sm:py-1.5 rounded-lg text-xs transition-colors"
+            title="Search Patients"
           >
-            <Search className="w-3.5 h-3.5 text-gray-400" />
+            <Search className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-gray-400" />
             <span className="hidden sm:inline">Search Patients, Beds, Devices...</span>
             <kbd className="hidden lg:inline-block px-1.5 py-0.5 text-[10px] font-mono font-semibold text-gray-500 bg-white border border-gray-200 rounded">
               ⌘K

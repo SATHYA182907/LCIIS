@@ -55,9 +55,9 @@ export const DoctorPatientsPage: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <Header title="Patients Directory" />
 
-        <main className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto w-full">
+        <main className="p-3.5 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto w-full">
           {/* Nurse Watch Hardware Demonstration Suite Card */}
-          <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-lg border border-slate-800 space-y-3">
+          <div className="bg-slate-900 text-white p-4 sm:p-5 rounded-2xl shadow-lg border border-slate-800 space-y-3">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div>
                 <div className="flex items-center space-x-2 text-xs font-bold text-teal-400">
@@ -70,10 +70,10 @@ export const DoctorPatientsPage: React.FC = () => {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full sm:w-auto">
                 <button
                   onClick={() => handleTriggerAlert('LCIIS-P-000001', 'Test Patient (Hardware 1)', 'SOS')}
-                  className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-all flex items-center space-x-1.5 shadow-md active:scale-95"
+                  className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center space-x-1.5 shadow-md active:scale-95"
                 >
                   <AlertTriangle className="w-3.5 h-3.5" />
                   <span>1. Test Hardware 1 (SOS Emergency)</span>
@@ -81,7 +81,7 @@ export const DoctorPatientsPage: React.FC = () => {
 
                 <button
                   onClick={() => handleTriggerAlert('LCIIS-P-000002', 'Marcus Vance (Abnormal Demo)', 'CRITICAL')}
-                  className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center space-x-1.5 shadow-md active:scale-95"
+                  className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center justify-center space-x-1.5 shadow-md active:scale-95"
                 >
                   <Bell className="w-3.5 h-3.5" />
                   <span>2. Trigger Patient 2 (CRITICAL Alert)</span>
@@ -89,7 +89,7 @@ export const DoctorPatientsPage: React.FC = () => {
 
                 <button
                   onClick={() => handleTriggerAlert('LCIIS-P-000001', 'System', 'NORMAL')}
-                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all flex items-center space-x-1 shadow-md active:scale-95"
+                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center space-x-1 shadow-md active:scale-95"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>Reset to NORMAL</span>

@@ -27,7 +27,10 @@ import {
   INITIAL_MEDICATIONS,
   INITIAL_INTERVENTIONS,
   INITIAL_AUDIT_LOGS,
-  INITIAL_DEMO_PATIENT
+  INITIAL_DEMO_PATIENT,
+  generateSyntheticPatients,
+  INITIAL_LIVE_VITALS,
+  INITIAL_ALERTS
 } from '../lib/seedData';
 
 import { isFirebaseConfigured, rtdb } from '../lib/firebase';
@@ -81,6 +84,7 @@ interface RealtimeContextType {
   isFirebaseConnected: boolean;
   firebaseError: string | null;
   isLoadingFirebase: boolean;
+  retryFirebaseConnection: () => Promise<void>;
 
   // Dynamic Calculators & Readers
   getPatientTrends: (patientId: string) => TrendResult[];
@@ -119,11 +123,14 @@ const RealtimeContext = createContext<RealtimeContextType | undefined>(undefined
 
 export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [users, setUsers] = useState<UserProfile[]>(DEMO_USERS);
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patients, setPatients] = useState<Patient[]>(() => generateSyntheticPatients());
   const [selectedPatientId, setSelectedPatientId] = useState<string>('LCIIS-P-000001');
   const [labResults, setLabResults] = useState<LaboratoryResult[]>(INITIAL_LAB_RESULTS);
-  const [liveVitalsMap, setLiveVitalsMap] = useState<Record<string, LiveVitals>>({});
-  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [liveVitalsMap, setLiveVitalsMap] = useState<Record<string, LiveVitals>>({
+    'LCIIS-P-000001': INITIAL_LIVE_VITALS,
+    'P12345': INITIAL_LIVE_VITALS
+  });
+  const [alerts, setAlerts] = useState<Alert[]>(INITIAL_ALERTS);
   const [inventory, setInventory] = useState<InventoryItem[]>(INITIAL_INVENTORY);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [devices, setDevices] = useState<DeviceRecord[]>(INITIAL_DEVICES);
@@ -137,6 +144,13 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(false);
   const [firebaseError, setFirebaseError] = useState<string | null>(null);
   const [isLoadingFirebase, setIsLoadingFirebase] = useState<boolean>(true);
+  const [retryKey, setRetryKey] = useState<number>(0);
+
+  const retryFirebaseConnection = useCallback(async () => {
+    setIsLoadingFirebase(true);
+    setFirebaseError(null);
+    setRetryKey((prev) => prev + 1);
+  }, []);
 
   // Initialize Audit Log Service
   useEffect(() => {
@@ -190,27 +204,33 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setIsLoadingFirebase(true);
         setFirebaseError(null);
 
-        // Seed default structure if empty, ensure mock patients, and purge unlinked vitals
-        await seedInitialDatabaseIfEmpty();
-        await ensureMockPatientsExist();
-        await purgeUnlinkedVitalsFromRTDB();
+        // Attempt seeding initial database if empty - wrapped safely so rules restrictions do not block subscriptions
+        try {
+          await seedInitialDatabaseIfEmpty();
+          await ensureMockPatientsExist();
+          await purgeUnlinkedVitalsFromRTDB();
+        } catch (seedErr) {
+          console.warn('Firebase RTDB seeding notice (security rules may restrict write):', seedErr);
+        }
 
         // 1. Subscribe to Patients
         unsubPatients = subscribeToPatients(
           (remotePatients) => {
-            setPatients(remotePatients);
-            setIsFirebaseConnected(true);
-            setIsLoadingFirebase(false);
-            if (remotePatients.length > 0) {
-              const exists = remotePatients.some((p) => p.id === selectedPatientId || p.hospitalId === selectedPatientId);
-              if (!exists) {
-                setSelectedPatientId(remotePatients[0].id || remotePatients[0].hospitalId);
-              }
+            if (remotePatients && remotePatients.length > 0) {
+              setPatients(remotePatients);
+              setSelectedPatientId((curr) => {
+                const exists = remotePatients.some((p) => p.id === curr || p.hospitalId === curr);
+                return exists ? curr : (remotePatients[0].id || remotePatients[0].hospitalId);
+              });
             }
+            setIsFirebaseConnected(true);
+            setFirebaseError(null);
+            setIsLoadingFirebase(false);
           },
           (err) => {
             console.error('Patients subscription failed:', err);
             setFirebaseError('Database access error: Check Firebase Realtime Database Security Rules.');
+            setIsFirebaseConnected(false);
             setIsLoadingFirebase(false);
           }
         );
@@ -218,7 +238,9 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // 2. Subscribe to Live Vitals
         unsubVitals = subscribeToLiveVitals(
           (vitalsMap) => {
-            setLiveVitalsMap(vitalsMap);
+            if (vitalsMap && Object.keys(vitalsMap).length > 0) {
+              setLiveVitalsMap(vitalsMap);
+            }
           },
           (err) => {
             console.error('Live vitals subscription failed:', err);
@@ -228,7 +250,9 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // 3. Subscribe to Alerts
         unsubAlerts = subscribeToAlerts(
           (remoteAlerts) => {
-            setAlerts(remoteAlerts);
+            if (remoteAlerts && remoteAlerts.length > 0) {
+              setAlerts(remoteAlerts);
+            }
             const sosAlert = remoteAlerts.find((a) => (a.summary.includes('SOS') || a.type === 'RAPID DETERIORATION') && a.status === 'NEW');
             if (sosAlert) {
               toast.error('🚨 BEDSIDE EMERGENCY SOS BUTTON PRESSED!', {
@@ -274,7 +298,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (unsubAlerts) unsubAlerts();
       if (unsubUsers) unsubUsers();
     };
-  }, [selectedPatientId]);
+  }, [retryKey]);
 
   const getPatientById = useCallback((id: string) => {
     if (!id) return undefined;
@@ -719,6 +743,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         isFirebaseConnected,
         firebaseError,
         isLoadingFirebase,
+        retryFirebaseConnection,
         getPatientTrends,
         getPatientRiskAssessment,
         getPatientExplanation,
