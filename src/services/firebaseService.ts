@@ -748,12 +748,51 @@ export const acknowledgeAlert = async (
   doctorName: string
 ): Promise<void> => {
   const db = getRTDB();
-  const alertRef = ref(db, `alerts/${alertId}`);
-  await update(alertRef, cleanUndefined({
-    status: 'ACKNOWLEDGED',
-    acknowledgedBy: doctorName,
-    acknowledgedAt: new Date().toISOString()
-  }));
+  try {
+    const alertRef = ref(db, `alerts/${alertId}`);
+    await update(alertRef, cleanUndefined({
+      status: 'ACKNOWLEDGED',
+      acknowledgedBy: doctorName,
+      acknowledgedAt: new Date().toISOString()
+    }));
+
+    if (alertId.includes('sos') || alertId.includes('lciis') || alertId.includes('hw')) {
+      await update(ref(db, 'LCIIS/alerts/current'), {
+        alert: 'NORMAL',
+        sos: false,
+        fall: false,
+        timestamp: Date.now()
+      });
+      await update(ref(db, 'liveVitals/LCIIS-P-000001'), { sos: false, alert: false });
+      await update(ref(db, 'LCIIS/patients/LCIIS-P-000001/current'), { sos: false, alert: false });
+    }
+  } catch (err) {
+    console.warn('acknowledgeAlert error:', err);
+  }
+};
+
+export const resolveAlert = async (
+  alertId: string,
+  _doctorName?: string
+): Promise<void> => {
+  const db = getRTDB();
+  try {
+    const alertRef = ref(db, `alerts/${alertId}`);
+    await remove(alertRef);
+
+    if (alertId.includes('sos') || alertId.includes('lciis') || alertId.includes('hw')) {
+      await update(ref(db, 'LCIIS/alerts/current'), {
+        alert: 'NORMAL',
+        sos: false,
+        fall: false,
+        timestamp: Date.now()
+      });
+      await update(ref(db, 'liveVitals/LCIIS-P-000001'), { sos: false, alert: false });
+      await update(ref(db, 'LCIIS/patients/LCIIS-P-000001/current'), { sos: false, alert: false });
+    }
+  } catch (err) {
+    console.warn('resolveAlert error:', err);
+  }
 };
 
 export const clearAllAlertsFromDB = async (): Promise<void> => {

@@ -8,7 +8,7 @@ import { ShieldAlert, CheckCircle2, Eye, Check, Clock, Trash2 } from 'lucide-rea
 import { toast } from 'sonner';
 
 export const DoctorAlertsPage: React.FC = () => {
-  const { alerts, acknowledgeAlert, clearAllAlerts, getPatientById } = useRealtime();
+  const { alerts, acknowledgeAlert, resolveAlert, clearAllAlerts, getPatientById } = useRealtime();
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -29,8 +29,8 @@ export const DoctorAlertsPage: React.FC = () => {
   };
 
   const handleResolve = (alertId: string) => {
-    acknowledgeAlert(alertId, doctorName);
-    toast.success('Alert resolved.');
+    resolveAlert(alertId, doctorName);
+    toast.success('Alert resolved and removed.');
   };
 
   return (

@@ -45,6 +45,7 @@ import {
   deleteUserFromDB,
   updateLiveVitals as firebaseUpdateLiveVitals,
   acknowledgeAlert as firebaseAcknowledgeAlert,
+  resolveAlert as firebaseResolveAlert,
   clearAllAlertsFromDB as firebaseClearAllAlertsFromDB,
   updateDeviceStatus as firebaseUpdateDeviceStatus,
   seedInitialDatabaseIfEmpty,
@@ -106,6 +107,7 @@ interface RealtimeContextType {
   addLaboratoryResult: (result: Omit<LaboratoryResult, 'id' | 'createdAt'>) => void;
   updateLiveVitals: (patientId: string, vitals: any) => Promise<void>;
   acknowledgeAlert: (alertId: string, doctorName: string) => Promise<void>;
+  resolveAlert: (alertId: string, doctorName?: string) => Promise<void>;
   clearAllAlerts: () => Promise<void>;
   overrideAlert: (alertId: string, doctorName: string, reason: string) => void;
   addNurseObservation: (observation: Omit<NurseObservation, 'id' | 'timestamp'>) => void;
@@ -257,10 +259,19 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         unsubAlerts = subscribeToAlerts(
           (remoteAlerts) => {
             setAlerts(remoteAlerts || []);
-            const activeSos = (remoteAlerts || []).find((a) => (a.summary.includes('SOS') || a.summary.includes('FALL') || a.type === 'RAPID DETERIORATION') && a.status === 'NEW');
+            const now = Date.now();
+            // Real-time freshness: only trigger siren and popup toast if the alert occurred in the last 45 seconds
+            // or if the live hardware stream currently has an active SOS flag
+            const activeSos = (remoteAlerts || []).find((a) => {
+              if (a.status !== 'NEW') return false;
+              const isSosOrFall = a.summary.includes('SOS') || a.summary.includes('FALL') || a.type === 'RAPID DETERIORATION';
+              if (!isSosOrFall) return false;
+              const alertTs = new Date(a.createdAt).getTime();
+              return (now - alertTs < 45000);
+            });
+
             if (activeSos) {
               alarmAudio.startAlarm();
-              const now = Date.now();
               if (now - lastSosToastTime > 6000) {
                 lastSosToastTime = now;
                 toast.error('🚨 BEDSIDE EMERGENCY SOS BUTTON PRESSED!', {
@@ -638,6 +649,25 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [isFirebaseConnected]);
 
+  const resolveAlert = useCallback(async (alertId: string, doctorName?: string) => {
+    setAlerts((prev) => {
+      const updated = prev.filter((a) => a.id !== alertId);
+      const remainingSos = updated.some((a) => (a.summary.includes('SOS') || a.summary.includes('FALL')) && a.status === 'NEW');
+      if (!remainingSos) {
+        alarmAudio.stopAlarm();
+      }
+      return updated;
+    });
+
+    if (isFirebaseConnected) {
+      try {
+        await firebaseResolveAlert(alertId, doctorName);
+      } catch (err) {
+        console.error('Firebase resolve alert error:', err);
+      }
+    }
+  }, [isFirebaseConnected]);
+
   const clearAllAlerts = useCallback(async () => {
     alarmAudio.stopAlarm();
     setAlerts([]);
@@ -806,6 +836,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addLaboratoryResult,
         updateLiveVitals,
         acknowledgeAlert,
+        resolveAlert,
         clearAllAlerts,
         overrideAlert,
         addNurseObservation,
