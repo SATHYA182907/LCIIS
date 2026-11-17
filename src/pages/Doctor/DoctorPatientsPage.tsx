@@ -76,15 +76,15 @@ export const DoctorPatientsPage: React.FC = () => {
                   className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center space-x-1.5 shadow-md active:scale-95"
                 >
                   <AlertTriangle className="w-3.5 h-3.5" />
-                  <span>1. Test Hardware 1 (SOS Emergency)</span>
+                  <span>1. Trigger Hardware SOS Emergency</span>
                 </button>
 
                 <button
-                  onClick={() => handleTriggerAlert('LCIIS-P-000002', 'Marcus Vance (Abnormal Demo)', 'CRITICAL')}
+                  onClick={() => handleTriggerAlert('LCIIS-P-000001', 'Test Patient (Hardware 1)', 'CRITICAL')}
                   className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center justify-center space-x-1.5 shadow-md active:scale-95"
                 >
                   <Bell className="w-3.5 h-3.5" />
-                  <span>2. Trigger Patient 2 (CRITICAL Alert)</span>
+                  <span>2. Trigger Hardware CRITICAL Alert</span>
                 </button>
 
                 <button

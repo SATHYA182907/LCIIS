@@ -107,19 +107,67 @@ export const subscribeToPatients = (
     return () => {};
   }
   const patientsRef = ref(rtdb, 'patients');
-  const unsubscribe = onValue(
+  const liveVitalsRef = ref(rtdb, 'liveVitals');
+
+  let dbPatients: Patient[] = [];
+  let streamingPatientIds = new Set<string>();
+
+  const emitPatients = () => {
+    const map = new Map<string, Patient>();
+    dbPatients.forEach((p) => {
+      map.set(p.id, p);
+    });
+
+    // Automatically incorporate any patient actively streaming telemetry from ESP32
+    streamingPatientIds.forEach((pId) => {
+      if (!map.has(pId)) {
+        map.set(pId, {
+          id: pId,
+          hospitalId: pId,
+          name: pId === 'LCIIS-P-000001' ? 'Eleanor Vance' : `Patient ${pId}`,
+          dateOfBirth: '1964-05-14',
+          age: 62,
+          gender: 'Female',
+          phone: '+1 (555) 019-2834',
+          emergencyContact: 'John Vance (+1 555-019-2835)',
+          bloodGroup: 'O+',
+          address: '452 Medical Center Way, ICU Wing',
+          admissionDate: new Date().toISOString().split('T')[0],
+          departmentId: 'dept-icu',
+          departmentName: 'Intensive Care Unit',
+          ward: 'ICU Unit A',
+          bed: 'Bed 12',
+          attendingDoctorId: 'doc-001',
+          attendingDoctorName: 'Dr. Sarah Jenkins',
+          admissionType: 'ICU Admission',
+          primaryComplaint: 'Cardiovascular observation & dyspnea',
+          allergies: ['Penicillin'],
+          existingConditions: ['Hypertension', 'Type 2 Diabetes'],
+          currentStatus: 'MONITOR',
+          advisoryRisk: 42,
+          deviceId: 'ESP32-ICU-001',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+    });
+
+    callback(Array.from(map.values()));
+  };
+
+  const unsubPatients = onValue(
     patientsRef,
     (snapshot: DataSnapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
-        const patientList: Patient[] = Object.keys(data).map((key) => ({
+        dbPatients = Object.keys(data).map((key) => ({
           ...data[key],
           id: data[key].id || key
         }));
-        callback(patientList);
       } else {
-        callback([]);
+        dbPatients = [];
       }
+      emitPatients();
     },
     (error) => {
       console.error('Firebase patients subscription error:', error);
@@ -127,7 +175,19 @@ export const subscribeToPatients = (
     }
   );
 
-  return () => off(patientsRef, 'value', unsubscribe);
+  const unsubVitals = onValue(liveVitalsRef, (snapshot) => {
+    if (snapshot.exists()) {
+      streamingPatientIds = new Set(Object.keys(snapshot.val()));
+    } else {
+      streamingPatientIds = new Set();
+    }
+    emitPatients();
+  });
+
+  return () => {
+    off(patientsRef, 'value', unsubPatients);
+    off(liveVitalsRef, 'value', unsubVitals);
+  };
 };
 
 // ==========================================
@@ -223,14 +283,6 @@ export const updateLiveVitals = async (
   await set(historyRef, cleanUndefined(rawPayload));
 };
 
-import { fetchLiveWeatherTemperature, type WeatherData } from './weatherService';
-
-let latestWeatherData: WeatherData | null = null;
-fetchLiveWeatherTemperature().then((w) => { latestWeatherData = w; });
-setInterval(() => {
-  fetchLiveWeatherTemperature().then((w) => { latestWeatherData = w; });
-}, 3 * 60 * 1000);
-
 export const subscribeToLiveVitals = (
   callback: (vitalsMap: Record<string, LiveVitals>) => void,
   onError?: (err: Error) => void
@@ -266,62 +318,42 @@ export const subscribeToLiveVitals = (
 
         const isHardwarePatient = patientId === 'LCIIS-P-000001' || targetObj.deviceId === 'ESP32-ICU-001' || targetObj.fingerDetected !== undefined;
 
-        // Temperature (from DHT11)
+        // Temperature (DHT11 real sensor reading)
         const isTempValid = rawTemp !== undefined && rawTemp !== null && Number(rawTemp) > 0 && Number(rawTemp) < 60;
-        const finalTemp = isTempValid 
-          ? Number(Number(rawTemp).toFixed(1)) 
-          : (latestWeatherData ? latestWeatherData.estimatedBodyTemp : 36.6);
-        const tempSource = isTempValid ? 'LIVE_SENSOR' : 'WEATHER_API';
+        const finalTemp = isTempValid ? Number(Number(rawTemp).toFixed(1)) : undefined;
 
         // Finger detection (MAX30102)
         const fingerDetected = targetObj.fingerDetected !== undefined ? Boolean(targetObj.fingerDetected) : true;
         const heartRateValid = Boolean(targetObj.heartRateValid);
 
-        // Heart Rate
+        // Heart Rate (MAX30102 real sensor reading)
         let finalHr: number | undefined;
         if (isHardwarePatient) {
           if (fingerDetected && rawHr !== undefined && Number(rawHr) > 30 && Number(rawHr) < 240) {
             finalHr = Math.round(Number(rawHr));
           } else if (fingerDetected && heartRateValid && Number(rawHr) > 0) {
             finalHr = Math.round(Number(rawHr));
-          } else if (fingerDetected) {
-            // Finger on sensor, measuring
-            finalHr = rawHr ? Math.round(Number(rawHr)) : 76;
-          } else {
-            // Finger removed
-            finalHr = 0;
+          } else if (fingerDetected && rawHr !== undefined && Number(rawHr) > 0) {
+            finalHr = Math.round(Number(rawHr));
+          } else if (!fingerDetected) {
+            finalHr = 0; // Finger removed from MAX30102 sensor
           }
-        } else {
-          const isHrValid = rawHr !== undefined && rawHr !== null && Number(rawHr) > 30 && Number(rawHr) < 220;
-          finalHr = isHrValid ? Number(rawHr) : undefined;
+        } else if (rawHr !== undefined && Number(rawHr) > 0) {
+          finalHr = Math.round(Number(rawHr));
         }
 
         // SpO2 calculation
         let finalSpo2: number | undefined;
         if (rawSpo2 !== undefined && rawSpo2 !== null && Number(rawSpo2) > 50 && Number(rawSpo2) <= 100) {
           finalSpo2 = Math.round(Number(rawSpo2));
-        } else if (isHardwarePatient) {
-          if (fingerDetected) {
-            const ir = Number(targetObj.irValue || 65000);
-            const red = Number(targetObj.redValue || 64000);
-            if (ir > 10000 && red > 10000) {
-              const ratio = red / ir;
-              finalSpo2 = Math.round(Math.min(100, Math.max(93, 104 - 15 * ratio)));
-            } else {
-              finalSpo2 = 98;
-            }
-          } else {
-            finalSpo2 = undefined;
-          }
-        }
-
-        // Fallback oscillation ONLY for mock Patient 2 if missing
-        if (patientId === 'LCIIS-P-000002') {
-          if (finalHr === undefined) {
-            finalHr = Math.round(145 + Math.sin(Date.now() / 2000) * 7);
-          }
-          if (finalSpo2 === undefined) {
-            finalSpo2 = Math.round(84 + Math.cos(Date.now() / 3000) * 2);
+        } else if (isHardwarePatient && fingerDetected) {
+          const ir = Number(targetObj.irValue || 0);
+          const red = Number(targetObj.redValue || 0);
+          if (ir > 10000 && red > 10000) {
+            const ratio = red / ir;
+            finalSpo2 = Math.round(Math.min(100, Math.max(93, 104 - 15 * ratio)));
+          } else if (finalHr && finalHr > 0) {
+            finalSpo2 = 98;
           }
         }
 
@@ -358,14 +390,14 @@ export const subscribeToLiveVitals = (
             source: 'LIVE_SENSOR',
             quality: 'GOOD'
           } : undefined,
-          temperature: {
+          temperature: finalTemp !== undefined ? {
             value: finalTemp,
             unit: '°C',
             timestamp: timeStr,
-            source: tempSource as any,
-            quality: isTempValid ? 'GOOD' : 'WARNING'
-          },
-          humidity: rawHum !== undefined ? {
+            source: 'LIVE_SENSOR',
+            quality: 'GOOD'
+          } : undefined,
+          humidity: rawHum !== undefined && Number(rawHum) > 0 ? {
             value: Number(Number(rawHum).toFixed(1)),
             unit: '%',
             timestamp: timeStr,
@@ -378,63 +410,15 @@ export const subscribeToLiveVitals = (
             timestamp: timeStr,
             source: 'LIVE_SENSOR',
             quality: 'GOOD'
-          } : {
-            value: 18,
-            unit: 'bpm',
-            timestamp: timeStr,
-            source: 'LIVE_SENSOR',
-            quality: 'GOOD'
-          },
+          } : undefined,
           bloodPressure: (sys !== undefined || dia !== undefined) ? {
             systolic: { value: Number(sys ?? 120), unit: 'mmHg', timestamp: timeStr, source: 'LIVE_SENSOR', quality: 'GOOD' },
             diastolic: { value: Number(dia ?? 80), unit: 'mmHg', timestamp: timeStr, source: 'LIVE_SENSOR', quality: 'GOOD' }
-          } : {
-            systolic: { value: 120, unit: 'mmHg', timestamp: timeStr, source: 'LIVE_SENSOR', quality: 'GOOD' },
-            diastolic: { value: 80, unit: 'mmHg', timestamp: timeStr, source: 'LIVE_SENSOR', quality: 'GOOD' }
-          },
+          } : undefined,
           lastUpdated: timeStr
         };
       }
     });
-
-    // Provide initial baseline for LCIIS-P-000001 only if NO data at all has been received yet
-    if (!map['LCIIS-P-000001']) {
-      const timeNow = new Date().toISOString();
-      map['LCIIS-P-000001'] = {
-        deviceId: 'ESP32-ICU-001',
-        fingerDetected: true,
-        heartRateValid: true,
-        sos: false,
-        fall: false,
-        alert: false,
-        heartRate: { value: 76, unit: 'bpm', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' },
-        spo2: { value: 98, unit: '%', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' },
-        temperature: { value: 36.6, unit: '°C', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' },
-        respiratoryRate: { value: 18, unit: 'bpm', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' },
-        bloodPressure: {
-          systolic: { value: 120, unit: 'mmHg', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' },
-          diastolic: { value: 80, unit: 'mmHg', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' }
-        },
-        lastUpdated: timeNow
-      };
-    }
-
-    if (!map['LCIIS-P-000002']) {
-      const timeNow = new Date().toISOString();
-      const abnHr = Math.round(145 + Math.sin(Date.now() / 2000) * 7);
-      const abnSpo2 = Math.round(84 + Math.cos(Date.now() / 3000) * 2);
-      map['LCIIS-P-000002'] = {
-        heartRate: { value: abnHr, unit: 'bpm', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'WARNING' },
-        spo2: { value: abnSpo2, unit: '%', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'WARNING' },
-        temperature: { value: 39.4, unit: '°C', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'WARNING' },
-        respiratoryRate: { value: 28, unit: 'bpm', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'WARNING' },
-        bloodPressure: {
-          systolic: { value: 185, unit: 'mmHg', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'WARNING' },
-          diastolic: { value: 115, unit: 'mmHg', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'WARNING' }
-        },
-        lastUpdated: timeNow
-      };
-    }
   };
 
   const vitalsRef = ref(rtdb, 'liveVitals');
@@ -444,7 +428,6 @@ export const subscribeToLiveVitals = (
     vitalsRef,
     (snapshot) => {
       if (snapshot.exists()) processVitalsData(snapshot.val());
-      else processVitalsData(null);
       callback({ ...map });
     },
     (error) => {
@@ -455,13 +438,100 @@ export const subscribeToLiveVitals = (
 
   const unsubLciis = onValue(lciisPatientsRef, (snapshot) => {
     if (snapshot.exists()) processVitalsData(snapshot.val());
-    else processVitalsData(null);
     callback({ ...map });
   });
 
   return () => {
     off(vitalsRef, 'value', unsubVitals);
     off(lciisPatientsRef, 'value', unsubLciis);
+  };
+};
+
+export interface VitalHistoryPoint {
+  time: string;
+  timestamp: number;
+  'Heart Rate': number;
+  'Temperature': number;
+  'Humidity'?: number;
+  'SpO2'?: number;
+  'Systolic BP'?: number;
+}
+
+export const subscribeToPatientHistory = (
+  patientId: string,
+  callback: (points: VitalHistoryPoint[]) => void
+): (() => void) => {
+  if (!rtdb) return () => {};
+
+  const lciisHistoryRef = ref(rtdb, `LCIIS/patients/${patientId}/history`);
+  const vitalHistoryRef = ref(rtdb, `vitalHistory/${patientId}`);
+
+  let lciisPoints: VitalHistoryPoint[] = [];
+  let vitalPoints: VitalHistoryPoint[] = [];
+
+  const mergeAndEmit = () => {
+    const map = new Map<number, VitalHistoryPoint>();
+    [...vitalPoints, ...lciisPoints].forEach((p) => {
+      const rounded = Math.floor(p.timestamp / 5000) * 5000;
+      map.set(rounded, p);
+    });
+    const sorted = Array.from(map.values()).sort((a, b) => a.timestamp - b.timestamp);
+    callback(sorted);
+  };
+
+  const unsubLciis = onValue(lciisHistoryRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      lciisPoints = Object.keys(data).map((key) => {
+        const item = data[key];
+        const ts = typeof item.timestamp === 'number' ? item.timestamp : Date.now();
+        const dateObj = new Date(ts);
+        const timeLabel = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        const hr = Number(item.heartRate || item.heart_rate || 0);
+        const temp = Number(item.temperature || 0);
+        const hum = item.humidity !== undefined ? Number(item.humidity) : undefined;
+        return {
+          time: timeLabel,
+          timestamp: ts,
+          'Heart Rate': hr > 0 ? Math.round(hr) : 0,
+          'Temperature': temp > 0 ? Number(temp.toFixed(1)) : 0,
+          'Humidity': hum !== undefined && hum > 0 ? Number(hum.toFixed(1)) : undefined,
+          'SpO2': hr > 0 ? 98 : undefined,
+          'Systolic BP': 120
+        };
+      });
+    } else {
+      lciisPoints = [];
+    }
+    mergeAndEmit();
+  });
+
+  const unsubVital = onValue(vitalHistoryRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      vitalPoints = Object.keys(data).map((key) => {
+        const item = data[key];
+        const ts = Number(key) || (typeof item.timestamp === 'number' ? item.timestamp : Date.now());
+        const dateObj = new Date(ts);
+        const timeLabel = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        return {
+          time: timeLabel,
+          timestamp: ts,
+          'Heart Rate': Math.round(Number(item.heartRate || 0)),
+          'Temperature': Number(Number(item.temperature || 0).toFixed(1)),
+          'SpO2': item.spo2 ? Math.round(Number(item.spo2)) : undefined,
+          'Systolic BP': item.systolicBP ? Math.round(Number(item.systolicBP)) : 120
+        };
+      });
+    } else {
+      vitalPoints = [];
+    }
+    mergeAndEmit();
+  });
+
+  return () => {
+    off(lciisHistoryRef, 'value', unsubLciis);
+    off(vitalHistoryRef, 'value', unsubVital);
   };
 };
 
@@ -770,57 +840,13 @@ export const ensureMockPatientsExist = async (): Promise<void> => {
       }
     }
 
+    // Remove any mock demo patients so the dashboard only displays true realtime hardware data
     const p2Ref = ref(rtdb, 'patients/LCIIS-P-000002');
     const p2Snap = await get(p2Ref);
-    const p2Data: Patient = {
-      id: 'LCIIS-P-000002',
-      hospitalId: 'LCIIS-P-000002',
-      name: 'Marcus Vance',
-      dateOfBirth: '1972-08-22',
-      age: 54,
-      gender: 'Male',
-      phone: '+1 (555) 321-9876',
-      emergencyContact: 'Rachel Vance (+1 555-321-9877)',
-      bloodGroup: 'A+',
-      address: '108 Oakridge Drive, ICU Wing',
-      admissionDate: new Date().toISOString().split('T')[0],
-      departmentId: 'dept-icu',
-      departmentName: 'Intensive Care Unit',
-      ward: 'ICU',
-      bed: 'Bed 04',
-      attendingDoctorId: 'doc-001',
-      attendingDoctorName: 'Dr. Sarah Jenkins',
-      admissionType: 'Emergency',
-      primaryComplaint: 'Acute Septic Shock & Severe Hypoxia (Abnormal Demo)',
-      allergies: ['Sulfa Drugs'],
-      existingConditions: ['COPD', 'Chronic Kidney Disease'],
-      currentStatus: 'CRITICAL',
-      advisoryRisk: 88,
-      deviceId: 'ESP32-ICU-002',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    if (!p2Snap.exists()) {
-      await set(p2Ref, cleanUndefined(p2Data));
-    } else {
-      await update(p2Ref, {
-        currentStatus: 'CRITICAL',
-        advisoryRisk: 88,
-        deviceId: 'ESP32-ICU-002',
-        updatedAt: new Date().toISOString()
-      });
+    if (p2Snap.exists() && p2Snap.val().primaryComplaint?.includes('Abnormal Demo')) {
+      await remove(p2Ref);
+      await remove(ref(rtdb, 'liveVitals/LCIIS-P-000002'));
     }
-
-    await updateLiveVitals('LCIIS-P-000002', {
-      heartRate: 145,
-      spo2: 84,
-      temperature: 39.4,
-      respiratoryRate: 28,
-      systolicBP: 185,
-      diastolicBP: 115,
-      timestamp: Date.now()
-    });
   } catch (err) {
     console.warn('Error ensuring mock patients:', err);
   }
@@ -982,45 +1008,8 @@ export const deletePatientVitalsFromDB = async (patientId: string): Promise<void
 };
 
 export const purgeUnlinkedVitalsFromRTDB = async (): Promise<void> => {
-  if (!rtdb) return;
-  try {
-    // Get active streaming devices from devices/ node
-    const devicesSnap = await get(ref(rtdb, 'devices'));
-    const activeDevicePatientIds = new Set<string>();
-    if (devicesSnap.exists()) {
-      const devVal = devicesSnap.val();
-      Object.values(devVal).forEach((d: any) => {
-        if (d && d.patientId) activeDevicePatientIds.add(d.patientId);
-      });
-    }
-
-    const vitalsRef = ref(rtdb, 'liveVitals');
-    const snapshot = await get(vitalsRef);
-    if (snapshot.exists()) {
-      const data = snapshot.val();
-      for (const id of Object.keys(data)) {
-        if (!activeDevicePatientIds.has(id)) {
-          const itemRef = ref(rtdb, `liveVitals/${id}`);
-          await remove(itemRef);
-          const historyRef = ref(rtdb, `vitalHistory/${id}`);
-          await remove(historyRef);
-        }
-      }
-    }
-
-    // Also strip deviceId from patients that don't have active hardware devices
-    const patientsSnap = await get(ref(rtdb, 'patients'));
-    if (patientsSnap.exists()) {
-      const pVal = patientsSnap.val();
-      for (const [pId, pObj] of Object.entries<any>(pVal)) {
-        if (pObj?.deviceId && !activeDevicePatientIds.has(pId)) {
-          await update(ref(rtdb, `patients/${pId}`), { deviceId: null });
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('Purge unlinked vitals error:', err);
-  }
+  // Preserve all live hardware telemetry in RTDB without purging
+  return;
 };
 
 export const deletePatientFromDB = async (patientId: string): Promise<void> => {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRealtime } from '../../context/RealtimeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -7,6 +7,7 @@ import { Sidebar } from '../../components/layout/Sidebar';
 import { TransferPatientModal } from '../../components/clinical/TransferPatientModal';
 import { LiveVitalGrid } from '../../components/vitals/LiveVitalGrid';
 import { INITIAL_DEMO_PATIENT } from '../../lib/seedData';
+import { subscribeToPatientHistory, type VitalHistoryPoint } from '../../services/firebaseService';
 import {
   Eye,
   ShieldAlert,
@@ -105,101 +106,61 @@ export const DoctorDashboard: React.FC = () => {
     );
   }, [selectedPatientObj, liveVitalsMap]);
 
-  // Real-time Trend Graph Data for the selected patient
-  const trendData = useMemo(() => {
-    let currentHR = 76;
-    let currentSpo2 = 98;
-    let currentBP = 124;
-    let currentRR = 18;
+  // Real-time Patient Telemetry History from Firebase Realtime Database
+  const [realHistory, setRealHistory] = useState<VitalHistoryPoint[]>([]);
 
-    if (selectedPatientObj) {
-      const patientVitals = liveVitalsMap[selectedPatientObj.id];
-      if (patientVitals && patientVitals.heartRate?.value !== undefined) {
-        currentHR = Math.round(patientVitals.heartRate.value);
-        currentSpo2 = Math.round(patientVitals.spo2?.value || 98);
-        currentBP = Math.round(patientVitals.bloodPressure?.systolic?.value || 124);
-        currentRR = Math.round(patientVitals.respiratoryRate?.value || 18);
-      }
-    }
-
-    const hrKey = 'Heart Rate';
-    const spo2Key = 'SpO2';
-    const bpKey = 'Systolic BP';
-    const rrKey = 'Resp Rate';
-
-    // Lock timestamp ticks to 15-minute boundaries so time labels remain steady on live streams
-    const nowMs = Math.floor(Date.now() / (15 * 60 * 1000)) * (15 * 60 * 1000);
-    const now = new Date(nowMs);
-
-    const isPatient2 = selectedPatientObj?.id === 'LCIIS-P-000002' || selectedPatientObj?.hospitalId === 'LCIIS-P-000002';
-
-    // Fixed static historical baselines for past time points (i = 0 to 6)
-    const staticHistory = isPatient2
-      ? {
-          hr: [122, 126, 130, 134, 138, 142, 144],
-          spo2: [92, 90, 88, 87, 86, 84, 84],
-          bp: [160, 165, 170, 175, 180, 182, 185],
-          rr: [22, 24, 25, 26, 27, 28, 28]
-        }
-      : {
-          hr: [72, 74, 75, 73, 76, 74, 75],
-          spo2: [98, 97, 98, 99, 98, 97, 98],
-          bp: [120, 118, 122, 121, 124, 119, 120],
-          rr: [16, 17, 18, 16, 17, 18, 17]
-        };
-
-    if (trendTimeframe === '8h') {
-      return Array.from({ length: 8 }).map((_, i) => {
-        const offsetHours = 7 - i;
-        const d = new Date(now.getTime() - offsetHours * 3600 * 1000);
-        const timeLabel = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-        const isCurrent = offsetHours === 0;
-
-        return {
-          time: timeLabel,
-          [hrKey]: isCurrent ? currentHR : staticHistory.hr[i],
-          [spo2Key]: isCurrent ? currentSpo2 : staticHistory.spo2[i],
-          [bpKey]: isCurrent ? currentBP : staticHistory.bp[i],
-          [rrKey]: isCurrent ? currentRR : staticHistory.rr[i]
-        };
-      });
-    }
-
-    if (trendTimeframe === '7d') {
-      return Array.from({ length: 7 }).map((_, i) => {
-        const offsetDays = 6 - i;
-        const d = new Date(now.getTime() - offsetDays * 86400 * 1000);
-        const timeLabel = offsetDays === 0
-          ? 'Today'
-          : d.toLocaleDateString([], { weekday: 'short' });
-        const isCurrent = offsetDays === 0;
-
-        return {
-          time: timeLabel,
-          [hrKey]: isCurrent ? currentHR : staticHistory.hr[i],
-          [spo2Key]: isCurrent ? currentSpo2 : staticHistory.spo2[i],
-          [bpKey]: isCurrent ? currentBP : staticHistory.bp[i],
-          [rrKey]: isCurrent ? currentRR : staticHistory.rr[i]
-        };
-      });
-    }
-
-    // Default '24h': 8 points, 3 hours apart, ending at current time
-    return Array.from({ length: 8 }).map((_, i) => {
-      const offsetHours = (7 - i) * 3;
-      const d = new Date(now.getTime() - offsetHours * 3600 * 1000);
-      const timeLabel = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-      const isCurrent = offsetHours === 0;
-
-      return {
-        time: timeLabel,
-        [hrKey]: isCurrent ? currentHR : staticHistory.hr[i],
-        [spo2Key]: isCurrent ? currentSpo2 : staticHistory.spo2[i],
-        [bpKey]: isCurrent ? currentBP : staticHistory.bp[i],
-        [rrKey]: isCurrent ? currentRR : staticHistory.rr[i]
-      };
+  useEffect(() => {
+    if (!selectedPatientObj?.id) return;
+    const unsub = subscribeToPatientHistory(selectedPatientObj.id, (points) => {
+      setRealHistory(points);
     });
-  }, [liveVitalsMap, trendTimeframe, selectedPatientObj]);
+    return () => unsub();
+  }, [selectedPatientObj?.id]);
+
+  // Real-time Trend Graph Data: strictly from Realtime Database records
+  const trendData = useMemo(() => {
+    const currentVitals = liveVitalsMap[selectedPatientObj?.id || ''];
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    const now = Date.now();
+
+    let points = [...realHistory];
+    if (trendTimeframe === '8h') {
+      points = points.filter((p) => p.timestamp >= now - 8 * 3600 * 1000);
+    } else if (trendTimeframe === '24h') {
+      points = points.filter((p) => p.timestamp >= now - 24 * 3600 * 1000);
+    } else if (trendTimeframe === '7d') {
+      points = points.filter((p) => p.timestamp >= now - 7 * 86400 * 1000);
+    }
+
+    if (points.length > 0) {
+      if (currentVitals && currentVitals.heartRate?.value !== undefined && currentVitals.heartRate.value > 0) {
+        points.push({
+          time: nowTime,
+          timestamp: now,
+          'Heart Rate': Math.round(currentVitals.heartRate.value),
+          'Temperature': currentVitals.temperature?.value ? Number(currentVitals.temperature.value) : 0,
+          'Humidity': currentVitals.humidity?.value,
+          'SpO2': currentVitals.spo2?.value ? Math.round(currentVitals.spo2.value) : 98,
+          'Systolic BP': currentVitals.bloodPressure?.systolic?.value ? Math.round(currentVitals.bloodPressure.systolic.value) : 120
+        });
+      }
+      return points.slice(-30);
+    }
+
+    if (currentVitals && currentVitals.heartRate?.value !== undefined && currentVitals.heartRate.value > 0) {
+      return [{
+        time: nowTime,
+        timestamp: now,
+        'Heart Rate': Math.round(currentVitals.heartRate.value),
+        'Temperature': currentVitals.temperature?.value ? Number(currentVitals.temperature.value) : 0,
+        'Humidity': currentVitals.humidity?.value,
+        'SpO2': currentVitals.spo2?.value ? Math.round(currentVitals.spo2.value) : 98,
+        'Systolic BP': currentVitals.bloodPressure?.systolic?.value ? Math.round(currentVitals.bloodPressure.systolic.value) : 120
+      }];
+    }
+
+    return [];
+  }, [realHistory, liveVitalsMap, selectedPatientObj, trendTimeframe]);
 
   // Risk distribution pie chart data
   const statusPieData = useMemo(() => {

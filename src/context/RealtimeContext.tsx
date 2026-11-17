@@ -27,10 +27,7 @@ import {
   INITIAL_MEDICATIONS,
   INITIAL_INTERVENTIONS,
   INITIAL_AUDIT_LOGS,
-  INITIAL_DEMO_PATIENT,
-  generateSyntheticPatients,
-  INITIAL_LIVE_VITALS,
-  INITIAL_ALERTS
+  INITIAL_DEMO_PATIENT
 } from '../lib/seedData';
 
 import { isFirebaseConfigured, rtdb, ensureFirebaseAuth } from '../lib/firebase';
@@ -124,14 +121,11 @@ const RealtimeContext = createContext<RealtimeContextType | undefined>(undefined
 
 export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [users, setUsers] = useState<UserProfile[]>(DEMO_USERS);
-  const [patients, setPatients] = useState<Patient[]>(() => generateSyntheticPatients());
+  const [patients, setPatients] = useState<Patient[]>([INITIAL_DEMO_PATIENT]);
   const [selectedPatientId, setSelectedPatientId] = useState<string>('LCIIS-P-000001');
   const [labResults, setLabResults] = useState<LaboratoryResult[]>(INITIAL_LAB_RESULTS);
-  const [liveVitalsMap, setLiveVitalsMap] = useState<Record<string, LiveVitals>>({
-    'LCIIS-P-000001': INITIAL_LIVE_VITALS,
-    'P12345': INITIAL_LIVE_VITALS
-  });
-  const [alerts, setAlerts] = useState<Alert[]>(INITIAL_ALERTS);
+  const [liveVitalsMap, setLiveVitalsMap] = useState<Record<string, LiveVitals>>({});
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>(INITIAL_INVENTORY);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [devices, setDevices] = useState<DeviceRecord[]>(INITIAL_DEVICES);
@@ -231,7 +225,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 return exists ? curr : (remotePatients[0].id || remotePatients[0].hospitalId);
               });
             } else {
-              setPatients([INITIAL_DEMO_PATIENT, ...generateSyntheticPatients().slice(0, 7)]);
+              setPatients([INITIAL_DEMO_PATIENT]);
             }
             setIsFirebaseConnected(true);
             setFirebaseError(null);
@@ -239,7 +233,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           },
           (err) => {
             console.error('Patients subscription failed:', err);
-            setPatients((curr) => (curr && curr.length > 0 ? curr : [INITIAL_DEMO_PATIENT, ...generateSyntheticPatients().slice(0, 7)]));
+            setPatients((curr) => (curr && curr.length > 0 ? curr : [INITIAL_DEMO_PATIENT]));
             setFirebaseError('Database access error: Check Firebase Realtime Database Security Rules.');
             setIsFirebaseConnected(false);
             setIsLoadingFirebase(false);
