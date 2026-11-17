@@ -8,6 +8,8 @@ import { TransferPatientModal } from '../../components/clinical/TransferPatientM
 import { LiveVitalGrid } from '../../components/vitals/LiveVitalGrid';
 import { INITIAL_DEMO_PATIENT } from '../../lib/seedData';
 import { subscribeToPatientHistory, type VitalHistoryPoint } from '../../services/firebaseService';
+import { alarmAudio } from '../../services/alarmAudioService';
+import { toast } from 'sonner';
 import {
   Eye,
   ShieldAlert,
@@ -53,6 +55,7 @@ export const DoctorDashboard: React.FC = () => {
     firebaseError,
     liveVitalsMap,
     acknowledgeAlert,
+    clearAllAlerts,
     retryFirebaseConnection,
     triggerWatchAlert
   } = useRealtime();
@@ -62,6 +65,7 @@ export const DoctorDashboard: React.FC = () => {
   const [trendTimeframe, setTrendTimeframe] = useState<'24h' | '8h' | '7d'>('24h');
   const [selectedPatientIdFilter, setSelectedPatientIdFilter] = useState<string>('LCIIS-P-000001');
   const [acknowledgedAlertIds, setAcknowledgedAlertIds] = useState<Set<string>>(new Set());
+  const [isSosMutedSession, setIsSosMutedSession] = useState<boolean>(false);
 
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [selectedTransferPatient, setSelectedTransferPatient] = useState<any>(null);
@@ -74,6 +78,7 @@ export const DoctorDashboard: React.FC = () => {
   const activeAlertsCount = activeAlerts.length;
 
   const activeSosAlert = useMemo(() => {
+    if (isSosMutedSession) return null;
     return alerts.find(
       (a) => (a.summary.includes('SOS') || a.summary.includes('FALL') || a.priority === 'CRITICAL') && a.status === 'NEW'
     ) || (liveVitalsMap['LCIIS-P-000001']?.sos ? {
@@ -84,7 +89,15 @@ export const DoctorDashboard: React.FC = () => {
       bed: 'Bed 12',
       summary: '🚨 EMERGENCY SOS BUTTON ACTIVATED AT BEDSIDE!'
     } : null);
-  }, [alerts, liveVitalsMap]);
+  }, [alerts, liveVitalsMap, isSosMutedSession]);
+
+  const handleSilenceSos = async () => {
+    alarmAudio.stopAlarm();
+    setIsSosMutedSession(true);
+    await triggerWatchAlert('LCIIS-P-000001', 'NORMAL');
+    await clearAllAlerts();
+    toast.success('Bedside emergency alarm silenced & acknowledged');
+  };
 
   const patientsNeedingAttention = patients
     .filter((p) => p.currentStatus === 'CRITICAL' || p.currentStatus === 'HIGH RISK' || p.currentStatus === 'MONITOR')
@@ -100,9 +113,15 @@ export const DoctorDashboard: React.FC = () => {
     if (!selectedPatientObj) return false;
     const v = liveVitalsMap[selectedPatientObj.id] || liveVitalsMap[selectedPatientObj.hospitalId];
     return Boolean(
-      (selectedPatientObj.deviceId || v?.deviceId || selectedPatientObj.id === 'LCIIS-P-000001') &&
-      v &&
-      (v.heartRate?.value !== undefined || v.temperature?.value !== undefined)
+      v && (
+        selectedPatientObj.deviceId ||
+        v.deviceId ||
+        selectedPatientObj.id === 'LCIIS-P-000001' ||
+        v.heartRate?.value !== undefined ||
+        v.temperature?.value !== undefined ||
+        v.irValue !== undefined ||
+        v.lastUpdated
+      )
     );
   }, [selectedPatientObj, liveVitalsMap]);
 
@@ -133,28 +152,28 @@ export const DoctorDashboard: React.FC = () => {
     }
 
     if (points.length > 0) {
-      if (currentVitals && currentVitals.heartRate?.value !== undefined && currentVitals.heartRate.value > 0) {
+      if (currentVitals && currentVitals.heartRate?.value !== undefined) {
         points.push({
           time: nowTime,
           timestamp: now,
           'Heart Rate': Math.round(currentVitals.heartRate.value),
           'Temperature': currentVitals.temperature?.value ? Number(currentVitals.temperature.value) : 0,
           'Humidity': currentVitals.humidity?.value,
-          'SpO2': currentVitals.spo2?.value ? Math.round(currentVitals.spo2.value) : 98,
+          'SpO2': currentVitals.spo2?.value ? Math.round(currentVitals.spo2.value) : (currentVitals.heartRate.value > 0 ? 98 : undefined),
           'Systolic BP': currentVitals.bloodPressure?.systolic?.value ? Math.round(currentVitals.bloodPressure.systolic.value) : 120
         });
       }
       return points.slice(-30);
     }
 
-    if (currentVitals && currentVitals.heartRate?.value !== undefined && currentVitals.heartRate.value > 0) {
+    if (currentVitals && (currentVitals.heartRate?.value !== undefined || currentVitals.temperature?.value !== undefined)) {
       return [{
         time: nowTime,
         timestamp: now,
-        'Heart Rate': Math.round(currentVitals.heartRate.value),
+        'Heart Rate': Math.round(currentVitals.heartRate?.value || 0),
         'Temperature': currentVitals.temperature?.value ? Number(currentVitals.temperature.value) : 0,
         'Humidity': currentVitals.humidity?.value,
-        'SpO2': currentVitals.spo2?.value ? Math.round(currentVitals.spo2.value) : 98,
+        'SpO2': currentVitals.spo2?.value ? Math.round(currentVitals.spo2.value) : (currentVitals.heartRate?.value ? 98 : undefined),
         'Systolic BP': currentVitals.bloodPressure?.systolic?.value ? Math.round(currentVitals.bloodPressure.systolic.value) : 120
       }];
     }
@@ -246,16 +265,23 @@ export const DoctorDashboard: React.FC = () => {
               {/* Trigger Bedside SOS Button */}
               <button
                 type="button"
-                onClick={() => triggerWatchAlert('LCIIS-P-000001', activeSosAlert ? 'NORMAL' : 'SOS')}
+                onClick={async () => {
+                  if (activeSosAlert || liveVitalsMap['LCIIS-P-000001']?.sos) {
+                    await handleSilenceSos();
+                  } else {
+                    setIsSosMutedSession(false);
+                    await triggerWatchAlert('LCIIS-P-000001', 'SOS');
+                  }
+                }}
                 className={`px-3 py-1.5 rounded-full text-xs font-black flex items-center space-x-1.5 shadow-sm transition-all active:scale-95 ${
-                  activeSosAlert
+                  activeSosAlert || (liveVitalsMap['LCIIS-P-000001']?.sos && !isSosMutedSession)
                     ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse ring-2 ring-red-400'
                     : 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-300'
                 }`}
                 title="Send SOS emergency alert to website and ESP32 hardware"
               >
                 <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-                <span>{activeSosAlert ? '🚨 SILENCE / CLEAR SOS' : '🚨 Trigger Bedside SOS'}</span>
+                <span>{activeSosAlert || (liveVitalsMap['LCIIS-P-000001']?.sos && !isSosMutedSession) ? '🚨 SILENCE / CLEAR SOS' : '🚨 Trigger Bedside SOS'}</span>
               </button>
 
               <div className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-bold border flex items-center space-x-2 ${
@@ -270,7 +296,7 @@ export const DoctorDashboard: React.FC = () => {
           </div>
 
           {/* Active Bedside Emergency SOS Banner */}
-          {activeSosAlert && (
+          {activeSosAlert && !isSosMutedSession && (
             <div className="p-3.5 sm:p-4 bg-red-600 text-white rounded-2xl shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-pulse border-2 border-red-400">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-white/20 rounded-xl shrink-0">
@@ -281,16 +307,41 @@ export const DoctorDashboard: React.FC = () => {
                     🚨 EMERGENCY SOS ALARM ACTIVE: {activeSosAlert.patientName || 'Eleanor Vance'} ({activeSosAlert.ward || 'ICU Unit A'} - {activeSosAlert.bed || 'Bed 12'})
                   </div>
                   <div className="text-xs text-red-100 font-medium mt-0.5">
-                    Physical hardware SOS switch pressed on ESP32-ICU-001 bedside unit. Clinical team response dispatched.
+                    Physical hardware SOS switch pressed on ESP32-ICU-001 bedside unit (GPIO 27 reads LOW).
+                  </div>
+                  <div className="text-[11px] text-red-200 mt-1">
+                    💡 If button was not pressed: Check 4-pin switch on breadboard (rotate 90°), or wire button to GND (Active-LOW).
                   </div>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => triggerWatchAlert(activeSosAlert.patientId || 'LCIIS-P-000001', 'NORMAL')}
+                onClick={handleSilenceSos}
                 className="px-4 py-2 bg-white text-red-700 hover:bg-red-50 font-black text-xs rounded-xl shadow transition-colors shrink-0 w-full sm:w-auto"
               >
                 Acknowledge & Silence Alarm
+              </button>
+            </div>
+          )}
+
+          {/* Silenced Hardware SOS Indicator */}
+          {isSosMutedSession && liveVitalsMap['LCIIS-P-000001']?.sos && (
+            <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-xs">
+              <div className="flex items-start space-x-2">
+                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold text-amber-950">Hardware SOS Status:</span> ESP32 GPIO 27 is reading 0V (LOW). Bedside alarm siren is silenced.
+                  <span className="block text-[11px] text-amber-800 mt-0.5">
+                    To fix physical false triggers: Rotate breadboard 4-pin switch 90°, or verify button is wired between GPIO 27 &amp; GND.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSosMutedSession(false)}
+                className="px-3 py-1 bg-amber-200 hover:bg-amber-300 text-amber-950 font-bold rounded-lg text-xs shrink-0 self-end sm:self-center"
+              >
+                Re-arm Siren
               </button>
             </div>
           )}
@@ -474,6 +525,11 @@ export const DoctorDashboard: React.FC = () => {
                 }`}>
                   {liveVitalsMap[selectedPatientObj?.id || '']?.fingerDetected !== false ? '● Finger Attached' : '○ Place Finger on MAX30102'}
                 </span>
+                {liveVitalsMap[selectedPatientObj?.id || '']?.irValue !== undefined && (
+                  <span className="px-2 py-0.5 rounded-full font-mono text-[11px] bg-slate-200 text-slate-800">
+                    IR: {liveVitalsMap[selectedPatientObj?.id || '']?.irValue}
+                  </span>
+                )}
                 {liveVitalsMap[selectedPatientObj?.id || '']?.temperature && (
                   <span className="px-2 py-0.5 rounded-full font-bold text-[11px] bg-slate-200 text-slate-800">
                     DHT11: {liveVitalsMap[selectedPatientObj?.id || '']?.temperature?.value}°C
@@ -486,7 +542,7 @@ export const DoctorDashboard: React.FC = () => {
                 )}
                 {liveVitalsMap[selectedPatientObj?.id || '']?.sos && (
                   <span className="px-2 py-0.5 rounded-full font-black text-[11px] bg-red-600 text-white animate-pulse">
-                    🚨 SOS TRIGGERED
+                    🚨 SOS TRIGGERED (GPIO 27 LOW)
                   </span>
                 )}
                 {liveVitalsMap[selectedPatientObj?.id || '']?.fall && (

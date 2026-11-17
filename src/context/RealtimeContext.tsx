@@ -256,10 +256,8 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         let lastSosToastTime = 0;
         unsubAlerts = subscribeToAlerts(
           (remoteAlerts) => {
-            if (remoteAlerts && remoteAlerts.length > 0) {
-              setAlerts(remoteAlerts);
-            }
-            const activeSos = remoteAlerts.find((a) => (a.summary.includes('SOS') || a.summary.includes('FALL') || a.type === 'RAPID DETERIORATION') && a.status === 'NEW');
+            setAlerts(remoteAlerts || []);
+            const activeSos = (remoteAlerts || []).find((a) => (a.summary.includes('SOS') || a.summary.includes('FALL') || a.type === 'RAPID DETERIORATION') && a.status === 'NEW');
             if (activeSos) {
               alarmAudio.startAlarm();
               const now = Date.now();

@@ -35,6 +35,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { alarmAudio } from '../../services/alarmAudioService';
 
 export const PatientDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -54,7 +55,8 @@ export const PatientDetailsPage: React.FC = () => {
     addDoctorRemark,
     addMedication,
     addIntervention,
-    triggerWatchAlert
+    triggerWatchAlert,
+    clearAllAlerts
   } = useRealtime();
 
   const patient = getPatientById(patientId);
@@ -258,6 +260,10 @@ export const PatientDetailsPage: React.FC = () => {
                 onClick={async () => {
                   try {
                     const newType = vitals?.sos ? 'NORMAL' : 'SOS';
+                    if (newType === 'NORMAL') {
+                      alarmAudio.stopAlarm();
+                      await clearAllAlerts();
+                    }
                     await triggerWatchAlert(patient.id, newType);
                   } catch (e: any) {
                     toast.error('Failed to trigger watch SOS');
