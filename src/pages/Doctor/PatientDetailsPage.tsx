@@ -259,19 +259,26 @@ export const PatientDetailsPage: React.FC = () => {
               <button
                 onClick={async () => {
                   try {
-                    const newType = vitals?.sos ? 'NORMAL' : 'SOS';
+                    const isCurrentlySos = Boolean(vitals?.sos);
+                    const newType = isCurrentlySos ? 'NORMAL' : 'SOS';
                     if (newType === 'NORMAL') {
                       alarmAudio.stopAlarm();
                       await clearAllAlerts();
+                      await triggerWatchAlert(patient.id, 'NORMAL');
+                      toast.success('Bedside emergency SOS cleared & silenced.');
+                    } else {
+                      await triggerWatchAlert(patient.id, 'SOS');
+                      toast.error(`🚨 BEDSIDE EMERGENCY SOS ACTIVATED FOR ${patient.name}!`, {
+                        description: `Bedside SOS latched for ${patient.id} (${patient.ward || 'ICU Unit A'} - ${patient.bed || 'Bed 12'})`
+                      });
                     }
-                    await triggerWatchAlert(patient.id, newType);
                   } catch (e: any) {
-                    toast.error('Failed to trigger watch SOS');
+                    toast.error('Failed to toggle SOS: ' + (e.message || 'Firebase error'));
                   }
                 }}
                 className={`px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-black rounded-lg shadow-xs flex items-center space-x-1 transition-all ${
                   vitals?.sos
-                    ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse'
+                    ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse ring-2 ring-red-400'
                     : 'bg-red-100 hover:bg-red-200 text-red-800 border border-red-300'
                 }`}
                 title="Trigger Emergency SOS on website and hardware"

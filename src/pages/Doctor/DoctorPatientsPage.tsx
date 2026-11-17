@@ -72,7 +72,7 @@ export const DoctorPatientsPage: React.FC = () => {
 
               <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full sm:w-auto">
                 <button
-                  onClick={() => handleTriggerAlert('LCIIS-P-000001', 'Test Patient (Hardware 1)', 'SOS')}
+                  onClick={() => handleTriggerAlert('LCIIS-P-000001', 'Eleanor Vance', 'SOS')}
                   className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center space-x-1.5 shadow-md active:scale-95"
                 >
                   <AlertTriangle className="w-3.5 h-3.5" />
@@ -80,7 +80,7 @@ export const DoctorPatientsPage: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => handleTriggerAlert('LCIIS-P-000001', 'Test Patient (Hardware 1)', 'CRITICAL')}
+                  onClick={() => handleTriggerAlert('LCIIS-P-000001', 'Eleanor Vance', 'CRITICAL')}
                   className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center justify-center space-x-1.5 shadow-md active:scale-95"
                 >
                   <Bell className="w-3.5 h-3.5" />

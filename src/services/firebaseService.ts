@@ -432,12 +432,49 @@ export const subscribeToLiveVitals = (
   }
 
   const map: Record<string, LiveVitals> = {};
+  let activeLciisAlert: { alert?: string; sos?: boolean; patientId?: string } = {};
 
   const emit = () => {
     callback({ ...map });
   };
 
-  // 1. Listen to liveVitals node
+  const applyAlertState = (targetPatientId: string) => {
+    if (!map[targetPatientId]) return;
+    const isSystemSos = activeLciisAlert.sos === true || activeLciisAlert.alert === 'SOS';
+    if (isSystemSos && (activeLciisAlert.patientId === targetPatientId || !activeLciisAlert.patientId || activeLciisAlert.patientId === 'NONE' || targetPatientId === 'LCIIS-P-000001')) {
+      map[targetPatientId].sos = true;
+      map[targetPatientId].alert = true;
+    }
+  };
+
+  // 1. Listen to /LCIIS/alerts/current (authoritative alert state untouched by ESP32 periodic vitals loop)
+  const lciisAlertsCurrentRef = ref(rtdb, 'LCIIS/alerts/current');
+  const unsubAlertsCurrent = onValue(
+    lciisAlertsCurrentRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        activeLciisAlert = snapshot.val() || {};
+      } else {
+        activeLciisAlert = {};
+      }
+      const targetPid = (activeLciisAlert.patientId && activeLciisAlert.patientId !== 'NONE') ? activeLciisAlert.patientId : 'LCIIS-P-000001';
+      if (map[targetPid]) {
+        if (activeLciisAlert.sos === true || activeLciisAlert.alert === 'SOS') {
+          map[targetPid].sos = true;
+          map[targetPid].alert = true;
+        } else {
+          map[targetPid].sos = false;
+          map[targetPid].alert = Boolean(map[targetPid].fall);
+        }
+      }
+      emit();
+    },
+    (error) => {
+      console.warn('LCIIS alerts/current listener notice:', error);
+    }
+  );
+
+  // 2. Listen to liveVitals node
   const vitalsRef = ref(rtdb, 'liveVitals');
   const unsubVitals = onValue(
     vitalsRef,
@@ -446,6 +483,7 @@ export const subscribeToLiveVitals = (
         const data = snapshot.val();
         Object.keys(data).forEach((patientId) => {
           map[patientId] = parseRawVitalsToStructured(patientId, data[patientId]);
+          applyAlertState(patientId);
         });
         emit();
       }
@@ -456,7 +494,7 @@ export const subscribeToLiveVitals = (
     }
   );
 
-  // 2. Direct fast listener to LCIIS/patients/LCIIS-P-000001/current (ESP32 active upload target)
+  // 3. Direct fast listener to LCIIS/patients/LCIIS-P-000001/current (ESP32 active upload target)
   // By listening directly to the leaf node /current, we avoid downloading the massive /history tree
   // which prevents browser freezing and keeps updates continuous and instant!
   const lciisCurrentRef = ref(rtdb, 'LCIIS/patients/LCIIS-P-000001/current');
@@ -467,6 +505,13 @@ export const subscribeToLiveVitals = (
         const val = snapshot.val();
         const patientId = val.patientId || val.patient_id || 'LCIIS-P-000001';
         map[patientId] = parseRawVitalsToStructured(patientId, val);
+
+        // Hardware SOS detection: If ESP32 detected physical button press (val.sos === true), latch it in database
+        if (val.sos === true && (!activeLciisAlert.sos || activeLciisAlert.alert !== 'SOS')) {
+          triggerNurseWatchAlert(patientId, 'SOS').catch(console.warn);
+        }
+
+        applyAlertState(patientId);
         emit();
       }
     },
@@ -476,6 +521,7 @@ export const subscribeToLiveVitals = (
   );
 
   return () => {
+    off(lciisAlertsCurrentRef, 'value', unsubAlertsCurrent);
     off(vitalsRef, 'value', unsubVitals);
     off(lciisCurrentRef, 'value', unsubCurrent);
   };
@@ -675,7 +721,7 @@ export const subscribeToAlerts = (
         const alertType = item.alert || (isSos ? 'SOS' : 'NORMAL');
         if (isSos || alertType !== 'NORMAL') {
           lciisAlerts.push({
-            id: `alert-lciis-${key}-${item.timestamp || Date.now()}`,
+            id: `alert-lciis-${key}`,
             patientId: pId,
             patientName: pId === 'LCIIS-P-000001' ? 'Eleanor Vance' : `Patient ${pId}`,
             ward: 'ICU Unit A',
