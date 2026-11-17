@@ -5,6 +5,8 @@ import { useAuth } from '../../context/AuthContext';
 import { Header } from '../../components/layout/Header';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { TransferPatientModal } from '../../components/clinical/TransferPatientModal';
+import { LiveVitalGrid } from '../../components/vitals/LiveVitalGrid';
+import { INITIAL_DEMO_PATIENT } from '../../lib/seedData';
 import {
   Eye,
   ShieldAlert,
@@ -50,7 +52,8 @@ export const DoctorDashboard: React.FC = () => {
     firebaseError,
     liveVitalsMap,
     acknowledgeAlert,
-    retryFirebaseConnection
+    retryFirebaseConnection,
+    triggerWatchAlert
   } = useRealtime();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -69,6 +72,19 @@ export const DoctorDashboard: React.FC = () => {
   const activeAlerts = alerts.filter((a) => a.status === 'NEW' || a.status === 'ACKNOWLEDGED');
   const activeAlertsCount = activeAlerts.length;
 
+  const activeSosAlert = useMemo(() => {
+    return alerts.find(
+      (a) => (a.summary.includes('SOS') || a.summary.includes('FALL') || a.priority === 'CRITICAL') && a.status === 'NEW'
+    ) || (liveVitalsMap['LCIIS-P-000001']?.sos ? {
+      id: 'alert-sos-live-p1',
+      patientId: 'LCIIS-P-000001',
+      patientName: 'Eleanor Vance',
+      ward: 'ICU Unit A',
+      bed: 'Bed 12',
+      summary: '🚨 EMERGENCY SOS BUTTON ACTIVATED AT BEDSIDE!'
+    } : null);
+  }, [alerts, liveVitalsMap]);
+
   const patientsNeedingAttention = patients
     .filter((p) => p.currentStatus === 'CRITICAL' || p.currentStatus === 'HIGH RISK' || p.currentStatus === 'MONITOR')
     .sort((a, b) => (b.advisoryRisk || 0) - (a.advisoryRisk || 0));
@@ -76,13 +92,17 @@ export const DoctorDashboard: React.FC = () => {
   const doctorName = user?.name || 'Dr. Sarah Jenkins';
 
   const selectedPatientObj = useMemo(() => {
-    return patients.find((p) => p.id === selectedPatientIdFilter || p.hospitalId === selectedPatientIdFilter) || patients[0] || null;
+    return patients.find((p) => p.id === selectedPatientIdFilter || p.hospitalId === selectedPatientIdFilter) || patients[0] || INITIAL_DEMO_PATIENT;
   }, [patients, selectedPatientIdFilter]);
 
   const isSelectedPatientHardwareConnected = useMemo(() => {
     if (!selectedPatientObj) return false;
-    const v = liveVitalsMap[selectedPatientObj.id];
-    return Boolean(selectedPatientObj.deviceId && v && v.heartRate?.value !== undefined);
+    const v = liveVitalsMap[selectedPatientObj.id] || liveVitalsMap[selectedPatientObj.hospitalId];
+    return Boolean(
+      (selectedPatientObj.deviceId || v?.deviceId || selectedPatientObj.id === 'LCIIS-P-000001') &&
+      v &&
+      (v.heartRate?.value !== undefined || v.temperature?.value !== undefined)
+    );
   }, [selectedPatientObj, liveVitalsMap]);
 
   // Real-time Trend Graph Data for the selected patient
@@ -261,7 +281,22 @@ export const DoctorDashboard: React.FC = () => {
               </p>
             </div>
 
-            <div className="flex items-center space-x-3 self-start sm:self-auto">
+            <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+              {/* Trigger Bedside SOS Button */}
+              <button
+                type="button"
+                onClick={() => triggerWatchAlert('LCIIS-P-000001', activeSosAlert ? 'NORMAL' : 'SOS')}
+                className={`px-3 py-1.5 rounded-full text-xs font-black flex items-center space-x-1.5 shadow-sm transition-all active:scale-95 ${
+                  activeSosAlert
+                    ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse ring-2 ring-red-400'
+                    : 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-300'
+                }`}
+                title="Send SOS emergency alert to website and ESP32 hardware"
+              >
+                <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                <span>{activeSosAlert ? '🚨 SILENCE / CLEAR SOS' : '🚨 Trigger Bedside SOS'}</span>
+              </button>
+
               <div className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-bold border flex items-center space-x-2 ${
                 isFirebaseConnected
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
@@ -272,6 +307,32 @@ export const DoctorDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Active Bedside Emergency SOS Banner */}
+          {activeSosAlert && (
+            <div className="p-3.5 sm:p-4 bg-red-600 text-white rounded-2xl shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-pulse border-2 border-red-400">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-white/20 rounded-xl shrink-0">
+                  <ShieldAlert className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <div className="font-black text-sm tracking-wide">
+                    🚨 EMERGENCY SOS ALARM ACTIVE: {activeSosAlert.patientName || 'Eleanor Vance'} ({activeSosAlert.ward || 'ICU Unit A'} - {activeSosAlert.bed || 'Bed 12'})
+                  </div>
+                  <div className="text-xs text-red-100 font-medium mt-0.5">
+                    Physical hardware SOS switch pressed on ESP32-ICU-001 bedside unit. Clinical team response dispatched.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => triggerWatchAlert(activeSosAlert.patientId || 'LCIIS-P-000001', 'NORMAL')}
+                className="px-4 py-2 bg-white text-red-700 hover:bg-red-50 font-black text-xs rounded-xl shadow transition-colors shrink-0 w-full sm:w-auto"
+              >
+                Acknowledge & Silence Alarm
+              </button>
+            </div>
+          )}
 
           {firebaseError && (
             <div className="p-3.5 sm:p-4 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-xl shadow-xs">
@@ -438,6 +499,43 @@ export const DoctorDashboard: React.FC = () => {
               </div>
             </div>
 
+            {/* Live Hardware Sensor Diagnostics Bar */}
+            {isSelectedPatientHardwareConnected && (
+              <div className="flex flex-wrap items-center gap-2 p-2.5 mb-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                <span className="font-bold text-slate-700 flex items-center space-x-1.5">
+                  <Radio className="w-3.5 h-3.5 text-teal-600 animate-pulse shrink-0" />
+                  <span className="font-mono text-[11px]">ESP32-ICU-001 Live:</span>
+                </span>
+                <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${
+                  liveVitalsMap[selectedPatientObj?.id || '']?.fingerDetected !== false
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-100 text-amber-800 animate-pulse'
+                }`}>
+                  {liveVitalsMap[selectedPatientObj?.id || '']?.fingerDetected !== false ? '● Finger Attached' : '○ Place Finger on MAX30102'}
+                </span>
+                {liveVitalsMap[selectedPatientObj?.id || '']?.temperature && (
+                  <span className="px-2 py-0.5 rounded-full font-bold text-[11px] bg-slate-200 text-slate-800">
+                    DHT11: {liveVitalsMap[selectedPatientObj?.id || '']?.temperature?.value}°C
+                  </span>
+                )}
+                {liveVitalsMap[selectedPatientObj?.id || '']?.humidity && (
+                  <span className="px-2 py-0.5 rounded-full font-bold text-[11px] bg-cyan-100 text-cyan-800">
+                    Humidity: {liveVitalsMap[selectedPatientObj?.id || '']?.humidity?.value}%
+                  </span>
+                )}
+                {liveVitalsMap[selectedPatientObj?.id || '']?.sos && (
+                  <span className="px-2 py-0.5 rounded-full font-black text-[11px] bg-red-600 text-white animate-pulse">
+                    🚨 SOS TRIGGERED
+                  </span>
+                )}
+                {liveVitalsMap[selectedPatientObj?.id || '']?.fall && (
+                  <span className="px-2 py-0.5 rounded-full font-black text-[11px] bg-red-600 text-white animate-pulse">
+                    🚨 FALL DETECTED
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Recharts Area Chart or Unlinked Hardware Notice */}
             {!isSelectedPatientHardwareConnected ? (
               <div className="h-64 my-4 flex flex-col items-center justify-center p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-300 text-center space-y-2">
@@ -522,6 +620,17 @@ export const DoctorDashboard: React.FC = () => {
                 </ResponsiveContainer>
               </div>
             )}
+
+            {/* Live Vital 6-Card Grid */}
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>Current Real-Time Vital Telemetry</span>
+                <span className="text-[10px] text-teal-700 font-mono">
+                  {liveVitalsMap[selectedPatientObj?.id || '']?.lastUpdated ? `Telemetry synced: ${new Date(liveVitalsMap[selectedPatientObj?.id || ''].lastUpdated!).toLocaleTimeString()}` : ''}
+                </span>
+              </div>
+              <LiveVitalGrid vitals={liveVitalsMap[selectedPatientObj?.id || ''] || liveVitalsMap[selectedPatientObj?.hospitalId || '']} />
+            </div>
           </div>
 
           {/* 2 Column Clinical Analytics Grid */}

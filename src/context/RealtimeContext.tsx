@@ -33,7 +33,8 @@ import {
   INITIAL_ALERTS
 } from '../lib/seedData';
 
-import { isFirebaseConfigured, rtdb } from '../lib/firebase';
+import { isFirebaseConfigured, rtdb, ensureFirebaseAuth } from '../lib/firebase';
+import { alarmAudio } from '../services/alarmAudioService';
 import {
   subscribeToPatients,
   subscribeToLiveVitals,
@@ -204,6 +205,13 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setIsLoadingFirebase(true);
         setFirebaseError(null);
 
+        // Ensure Firebase Auth session is active before RTDB operations
+        try {
+          await ensureFirebaseAuth();
+        } catch (authErr) {
+          console.warn('Firebase Auth initialization warning:', authErr);
+        }
+
         // Attempt seeding initial database if empty - wrapped safely so rules restrictions do not block subscriptions
         try {
           await seedInitialDatabaseIfEmpty();
@@ -222,6 +230,8 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 const exists = remotePatients.some((p) => p.id === curr || p.hospitalId === curr);
                 return exists ? curr : (remotePatients[0].id || remotePatients[0].hospitalId);
               });
+            } else {
+              setPatients([INITIAL_DEMO_PATIENT, ...generateSyntheticPatients().slice(0, 7)]);
             }
             setIsFirebaseConnected(true);
             setFirebaseError(null);
@@ -229,6 +239,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           },
           (err) => {
             console.error('Patients subscription failed:', err);
+            setPatients((curr) => (curr && curr.length > 0 ? curr : [INITIAL_DEMO_PATIENT, ...generateSyntheticPatients().slice(0, 7)]));
             setFirebaseError('Database access error: Check Firebase Realtime Database Security Rules.');
             setIsFirebaseConnected(false);
             setIsLoadingFirebase(false);
@@ -248,17 +259,25 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         );
 
         // 3. Subscribe to Alerts
+        let lastSosToastTime = 0;
         unsubAlerts = subscribeToAlerts(
           (remoteAlerts) => {
             if (remoteAlerts && remoteAlerts.length > 0) {
               setAlerts(remoteAlerts);
             }
-            const sosAlert = remoteAlerts.find((a) => (a.summary.includes('SOS') || a.type === 'RAPID DETERIORATION') && a.status === 'NEW');
-            if (sosAlert) {
-              toast.error('🚨 BEDSIDE EMERGENCY SOS BUTTON PRESSED!', {
-                description: `Emergency alert from ${sosAlert.ward} (${sosAlert.bed}) - Patient: ${sosAlert.patientId}`,
-                duration: 10000
-              });
+            const activeSos = remoteAlerts.find((a) => (a.summary.includes('SOS') || a.summary.includes('FALL') || a.type === 'RAPID DETERIORATION') && a.status === 'NEW');
+            if (activeSos) {
+              alarmAudio.startAlarm();
+              const now = Date.now();
+              if (now - lastSosToastTime > 6000) {
+                lastSosToastTime = now;
+                toast.error('🚨 BEDSIDE EMERGENCY SOS BUTTON PRESSED!', {
+                  description: `${activeSos.summary} - Location: ${activeSos.ward} (${activeSos.bed}) - Patient: ${activeSos.patientId}`,
+                  duration: 10000
+                });
+              }
+            } else {
+              alarmAudio.stopAlarm();
             }
           },
           (err) => {
@@ -600,30 +619,62 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [isFirebaseConnected]);
 
   const acknowledgeAlert = useCallback(async (alertId: string, doctorName: string) => {
-    if (isFirebaseConnected) {
-      await firebaseAcknowledgeAlert(alertId, doctorName);
-    } else {
-      setAlerts((prev) =>
-        prev.map((a) =>
-          a.id === alertId
-            ? {
-                ...a,
-                status: 'ACKNOWLEDGED',
-                acknowledgedBy: doctorName,
-                acknowledgedAt: new Date().toISOString(),
-              }
-            : a
-        )
+    setAlerts((prev) => {
+      const updated = prev.map((a) =>
+        a.id === alertId
+          ? {
+              ...a,
+              status: 'ACKNOWLEDGED' as const,
+              acknowledgedBy: doctorName,
+              acknowledgedAt: new Date().toISOString(),
+            }
+          : a
       );
+      const remainingSos = updated.some((a) => (a.summary.includes('SOS') || a.summary.includes('FALL')) && a.status === 'NEW');
+      if (!remainingSos) {
+        alarmAudio.stopAlarm();
+      }
+      return updated;
+    });
+
+    if (isFirebaseConnected) {
+      try {
+        await firebaseAcknowledgeAlert(alertId, doctorName);
+      } catch (err) {
+        console.error('Firebase acknowledge alert error:', err);
+      }
     }
   }, [isFirebaseConnected]);
 
   const clearAllAlerts = useCallback(async () => {
-    if (isFirebaseConnected) {
-      await firebaseClearAllAlertsFromDB();
-    }
+    alarmAudio.stopAlarm();
     setAlerts([]);
+    if (isFirebaseConnected) {
+      try {
+        await firebaseClearAllAlertsFromDB();
+      } catch (err) {
+        console.error('Firebase clear alerts error:', err);
+      }
+    }
   }, [isFirebaseConnected]);
+
+  const handleTriggerWatchAlert = useCallback(async (patientId: string, alertType: 'SOS' | 'CRITICAL' | 'ALERT' | 'NORMAL' = 'CRITICAL') => {
+    try {
+      await triggerNurseWatchAlert(patientId, alertType);
+      if (alertType === 'SOS') {
+        alarmAudio.startAlarm();
+        toast.error('🚨 BEDSIDE EMERGENCY SOS BUTTON TRIGGERED!', {
+          description: `Bedside emergency triggered for Patient ${patientId} (ICU Bed 12).`,
+          duration: 12000
+        });
+      } else if (alertType === 'NORMAL') {
+        alarmAudio.stopAlarm();
+        toast.success('Bedside SOS alarm cleared.');
+      }
+    } catch (err) {
+      console.error('Trigger alert error:', err);
+    }
+  }, []);
 
   const overrideAlert = useCallback((alertId: string, doctorName: string, reason: string) => {
     setAlerts((prev) =>
@@ -771,7 +822,7 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         addIntervention,
         processStockMovement,
         updateDeviceStatus,
-        triggerWatchAlert: triggerNurseWatchAlert,
+        triggerWatchAlert: handleTriggerWatchAlert,
       }}
     >
       {children}

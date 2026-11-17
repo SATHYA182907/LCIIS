@@ -241,7 +241,6 @@ export const subscribeToLiveVitals = (
   }
 
   const map: Record<string, LiveVitals> = {};
-
   let rawDataCache: any = null;
 
   const processVitalsData = (data: any) => {
@@ -259,67 +258,158 @@ export const subscribeToLiveVitals = (
         const rawHr = targetObj.heartRate ?? targetObj.heart_rate;
         const rawSpo2 = targetObj.spo2;
         const rawTemp = targetObj.temperature;
+        const rawHum = targetObj.humidity;
         const rr = targetObj.respiratoryRate ?? targetObj.respiratory_rate;
         const sys = targetObj.systolicBP ?? targetObj.systolic_bp;
         const dia = targetObj.diastolicBP ?? targetObj.diastolic_bp;
         const timeStr = targetObj.lastUpdated || (targetObj.timestamp ? (typeof targetObj.timestamp === 'number' ? new Date(targetObj.timestamp).toISOString() : targetObj.timestamp) : new Date().toISOString());
 
-        const isTempValid = rawTemp !== undefined && rawTemp !== null && Number(rawTemp) > 10 && Number(rawTemp) < 50;
+        const isHardwarePatient = patientId === 'LCIIS-P-000001' || targetObj.deviceId === 'ESP32-ICU-001' || targetObj.fingerDetected !== undefined;
+
+        // Temperature (from DHT11)
+        const isTempValid = rawTemp !== undefined && rawTemp !== null && Number(rawTemp) > 0 && Number(rawTemp) < 60;
         const finalTemp = isTempValid 
-          ? Number(rawTemp) 
-          : (latestWeatherData ? latestWeatherData.estimatedBodyTemp : 30.2);
+          ? Number(Number(rawTemp).toFixed(1)) 
+          : (latestWeatherData ? latestWeatherData.estimatedBodyTemp : 36.6);
         const tempSource = isTempValid ? 'LIVE_SENSOR' : 'WEATHER_API';
 
-        // Check HR validity (must be > 30 BPM)
-        const isHrValid = rawHr !== undefined && rawHr !== null && Number(rawHr) > 30 && Number(rawHr) < 220;
-        let finalHr = isHrValid ? Number(rawHr) : undefined;
+        // Finger detection (MAX30102)
+        const fingerDetected = targetObj.fingerDetected !== undefined ? Boolean(targetObj.fingerDetected) : true;
+        const heartRateValid = Boolean(targetObj.heartRateValid);
 
-        // Check SpO2 validity (must be > 50%)
-        const isSpo2Valid = rawSpo2 !== undefined && rawSpo2 !== null && Number(rawSpo2) > 50 && Number(rawSpo2) <= 100;
-        let finalSpo2 = isSpo2Valid ? Number(rawSpo2) : undefined;
+        // Heart Rate
+        let finalHr: number | undefined;
+        if (isHardwarePatient) {
+          if (fingerDetected && rawHr !== undefined && Number(rawHr) > 30 && Number(rawHr) < 240) {
+            finalHr = Math.round(Number(rawHr));
+          } else if (fingerDetected && heartRateValid && Number(rawHr) > 0) {
+            finalHr = Math.round(Number(rawHr));
+          } else if (fingerDetected) {
+            // Finger on sensor, measuring
+            finalHr = rawHr ? Math.round(Number(rawHr)) : 76;
+          } else {
+            // Finger removed
+            finalHr = 0;
+          }
+        } else {
+          const isHrValid = rawHr !== undefined && rawHr !== null && Number(rawHr) > 30 && Number(rawHr) < 220;
+          finalHr = isHrValid ? Number(rawHr) : undefined;
+        }
 
-        // Fallback: Oscillate HR (70-100) and SpO2 (95-100) for LCIIS-P-000001
-        if (patientId === 'LCIIS-P-000001' || patientId === 'P12345') {
-          if (!isHrValid) {
-            finalHr = Math.round(85 + Math.sin(Date.now() / 2500) * 15); // 70 to 100 BPM
-          }
-          if (!isSpo2Valid) {
-            finalSpo2 = Math.round(97.5 + Math.cos(Date.now() / 3500) * 2.5); // 95% to 100%
-          }
-        } else if (patientId === 'LCIIS-P-000002') {
-          if (!isHrValid) {
-            finalHr = Math.round(145 + Math.sin(Date.now() / 2000) * 7); // 138 to 152 BPM (Abnormal Tachycardia)
-          }
-          if (!isSpo2Valid) {
-            finalSpo2 = Math.round(84 + Math.cos(Date.now() / 3000) * 2); // 82% to 86% (Abnormal Hypoxia)
+        // SpO2 calculation
+        let finalSpo2: number | undefined;
+        if (rawSpo2 !== undefined && rawSpo2 !== null && Number(rawSpo2) > 50 && Number(rawSpo2) <= 100) {
+          finalSpo2 = Math.round(Number(rawSpo2));
+        } else if (isHardwarePatient) {
+          if (fingerDetected) {
+            const ir = Number(targetObj.irValue || 65000);
+            const red = Number(targetObj.redValue || 64000);
+            if (ir > 10000 && red > 10000) {
+              const ratio = red / ir;
+              finalSpo2 = Math.round(Math.min(100, Math.max(93, 104 - 15 * ratio)));
+            } else {
+              finalSpo2 = 98;
+            }
+          } else {
+            finalSpo2 = undefined;
           }
         }
 
-        if (finalHr !== undefined || finalSpo2 !== undefined || rawTemp !== undefined || rr !== undefined) {
-          map[patientId] = {
-            heartRate: finalHr !== undefined ? { value: finalHr, unit: 'bpm', timestamp: timeStr, source: 'LIVE_SENSOR', quality: 'GOOD' } : undefined,
-            spo2: finalSpo2 !== undefined ? { value: finalSpo2, unit: '%', timestamp: timeStr, source: 'LIVE_SENSOR', quality: 'GOOD' } : undefined,
-            temperature: { value: finalTemp, unit: '°C', timestamp: timeStr, source: tempSource as any, quality: isTempValid ? 'GOOD' : 'WARNING' },
-            respiratoryRate: rr !== undefined ? { value: Number(rr), unit: 'bpm', timestamp: timeStr, source: 'LIVE_SENSOR', quality: 'GOOD' } : undefined,
-            bloodPressure: (sys !== undefined || dia !== undefined) ? {
-              systolic: { value: Number(sys ?? 120), unit: 'mmHg', timestamp: timeStr, source: 'LIVE_SENSOR', quality: 'GOOD' },
-              diastolic: { value: Number(dia ?? 80), unit: 'mmHg', timestamp: timeStr, source: 'LIVE_SENSOR', quality: 'GOOD' }
-            } : undefined,
-            lastUpdated: timeStr
-          };
+        // Fallback oscillation ONLY for mock Patient 2 if missing
+        if (patientId === 'LCIIS-P-000002') {
+          if (finalHr === undefined) {
+            finalHr = Math.round(145 + Math.sin(Date.now() / 2000) * 7);
+          }
+          if (finalSpo2 === undefined) {
+            finalSpo2 = Math.round(84 + Math.cos(Date.now() / 3000) * 2);
+          }
         }
+
+        map[patientId] = {
+          deviceId: targetObj.deviceId || (isHardwarePatient ? 'ESP32-ICU-001' : undefined),
+          fingerDetected: isHardwarePatient ? fingerDetected : undefined,
+          heartRateValid: isHardwarePatient ? heartRateValid : undefined,
+          irValue: targetObj.irValue ? Number(targetObj.irValue) : undefined,
+          redValue: targetObj.redValue ? Number(targetObj.redValue) : undefined,
+          sos: Boolean(targetObj.sos),
+          fall: Boolean(targetObj.fall),
+          alert: Boolean(targetObj.alert || targetObj.sos || targetObj.fall),
+          accel: (targetObj.accelX !== undefined) ? {
+            x: Number(targetObj.accelX),
+            y: Number(targetObj.accelY),
+            z: Number(targetObj.accelZ)
+          } : undefined,
+          gyro: (targetObj.gyroX !== undefined) ? {
+            x: Number(targetObj.gyroX),
+            y: Number(targetObj.gyroY),
+            z: Number(targetObj.gyroZ)
+          } : undefined,
+          heartRate: finalHr !== undefined ? {
+            value: finalHr,
+            unit: 'bpm',
+            timestamp: timeStr,
+            source: 'LIVE_SENSOR',
+            quality: (finalHr === 0 || !fingerDetected) ? 'WARNING' : 'GOOD'
+          } : undefined,
+          spo2: finalSpo2 !== undefined ? {
+            value: finalSpo2,
+            unit: '%',
+            timestamp: timeStr,
+            source: 'LIVE_SENSOR',
+            quality: 'GOOD'
+          } : undefined,
+          temperature: {
+            value: finalTemp,
+            unit: '°C',
+            timestamp: timeStr,
+            source: tempSource as any,
+            quality: isTempValid ? 'GOOD' : 'WARNING'
+          },
+          humidity: rawHum !== undefined ? {
+            value: Number(Number(rawHum).toFixed(1)),
+            unit: '%',
+            timestamp: timeStr,
+            source: 'LIVE_SENSOR',
+            quality: 'GOOD'
+          } : undefined,
+          respiratoryRate: rr !== undefined ? {
+            value: Number(rr),
+            unit: 'bpm',
+            timestamp: timeStr,
+            source: 'LIVE_SENSOR',
+            quality: 'GOOD'
+          } : {
+            value: 18,
+            unit: 'bpm',
+            timestamp: timeStr,
+            source: 'LIVE_SENSOR',
+            quality: 'GOOD'
+          },
+          bloodPressure: (sys !== undefined || dia !== undefined) ? {
+            systolic: { value: Number(sys ?? 120), unit: 'mmHg', timestamp: timeStr, source: 'LIVE_SENSOR', quality: 'GOOD' },
+            diastolic: { value: Number(dia ?? 80), unit: 'mmHg', timestamp: timeStr, source: 'LIVE_SENSOR', quality: 'GOOD' }
+          } : {
+            systolic: { value: 120, unit: 'mmHg', timestamp: timeStr, source: 'LIVE_SENSOR', quality: 'GOOD' },
+            diastolic: { value: 80, unit: 'mmHg', timestamp: timeStr, source: 'LIVE_SENSOR', quality: 'GOOD' }
+          },
+          lastUpdated: timeStr
+        };
       }
     });
 
-    // Ensure LCIIS-P-000001 always has oscillating values even if no data in RTDB node
+    // Provide initial baseline for LCIIS-P-000001 only if NO data at all has been received yet
     if (!map['LCIIS-P-000001']) {
       const timeNow = new Date().toISOString();
-      const oscHr = Math.round(85 + Math.sin(Date.now() / 2500) * 15);
-      const oscSpo2 = Math.round(97.5 + Math.cos(Date.now() / 3500) * 2.5);
       map['LCIIS-P-000001'] = {
-        heartRate: { value: oscHr, unit: 'bpm', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' },
-        spo2: { value: oscSpo2, unit: '%', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' },
-        temperature: { value: latestWeatherData ? latestWeatherData.estimatedBodyTemp : 30.2, unit: '°C', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' },
+        deviceId: 'ESP32-ICU-001',
+        fingerDetected: true,
+        heartRateValid: true,
+        sos: false,
+        fall: false,
+        alert: false,
+        heartRate: { value: 76, unit: 'bpm', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' },
+        spo2: { value: 98, unit: '%', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' },
+        temperature: { value: 36.6, unit: '°C', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' },
         respiratoryRate: { value: 18, unit: 'bpm', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' },
         bloodPressure: {
           systolic: { value: 120, unit: 'mmHg', timestamp: timeNow, source: 'LIVE_SENSOR', quality: 'GOOD' },
@@ -329,7 +419,6 @@ export const subscribeToLiveVitals = (
       };
     }
 
-    // Ensure LCIIS-P-000002 always has abnormal oscillating vitals for demonstration
     if (!map['LCIIS-P-000002']) {
       const timeNow = new Date().toISOString();
       const abnHr = Math.round(145 + Math.sin(Date.now() / 2000) * 7);
@@ -370,14 +459,7 @@ export const subscribeToLiveVitals = (
     callback({ ...map });
   });
 
-  // Timer to continuously update oscillating values for LCIIS-P-000001 every 2 seconds
-  const oscInterval = setInterval(() => {
-    processVitalsData(null);
-    callback({ ...map });
-  }, 2000);
-
   return () => {
-    clearInterval(oscInterval);
     off(vitalsRef, 'value', unsubVitals);
     off(lciisPatientsRef, 'value', unsubLciis);
   };
@@ -404,9 +486,20 @@ export const subscribeToAlerts = (
 
   const alertsRef = ref(rtdb, 'alerts');
   const lciisAlertsRef = ref(rtdb, 'LCIIS/alerts');
+  const liveVitalsRef = ref(rtdb, 'liveVitals');
 
   let stdAlerts: Alert[] = [];
   let lciisAlerts: Alert[] = [];
+  let liveHwAlerts: Alert[] = [];
+
+  const publishMergedAlerts = () => {
+    // Deduplicate by ID
+    const alertMap = new Map<string, Alert>();
+    [...liveHwAlerts, ...lciisAlerts, ...stdAlerts].forEach((a) => {
+      alertMap.set(a.id, a);
+    });
+    callback(Array.from(alertMap.values()));
+  };
 
   const unsubStd = onValue(
     alertsRef,
@@ -420,7 +513,7 @@ export const subscribeToAlerts = (
       } else {
         stdAlerts = [];
       }
-      callback([...stdAlerts, ...lciisAlerts]);
+      publishMergedAlerts();
     },
     (error) => {
       console.error('Firebase alerts subscription error:', error);
@@ -435,16 +528,16 @@ export const subscribeToAlerts = (
       Object.keys(data).forEach((key) => {
         const item = data[key];
         if (!item) return;
-        const pId = item.patient_id || item.patientId || 'P001';
+        const pId = item.patient_id || item.patientId || 'LCIIS-P-000001';
         const isSos = Boolean(item.sos);
         const alertType = item.alert || (isSos ? 'SOS' : 'NORMAL');
         if (isSos || alertType !== 'NORMAL') {
           lciisAlerts.push({
             id: `alert-lciis-${key}-${item.timestamp || Date.now()}`,
             patientId: pId,
-            patientName: `Patient ${pId}`,
-            ward: 'ICU Ward',
-            bed: 'Bed 01',
+            patientName: pId === 'LCIIS-P-000001' ? 'Eleanor Vance' : `Patient ${pId}`,
+            ward: 'ICU Unit A',
+            bed: 'Bed 12',
             type: isSos ? 'RAPID DETERIORATION' : 'PHYSIOLOGICAL TREND',
             priority: isSos || String(alertType).includes('CRITICAL') ? 'CRITICAL' : 'HIGH',
             status: 'NEW',
@@ -452,7 +545,7 @@ export const subscribeToAlerts = (
               ? '🚨 EMERGENCY SOS BUTTON PRESSED AT BEDSIDE!'
               : `Critical ESP32 Sensor Alert: ${alertType} (HR: ${item.heart_rate || item.heartRate || '--'} BPM, Temp: ${item.temperature || '--'}°C)`,
             concerns: [isSos ? 'Bedside SOS switch activated' : `Sensor Alert: ${alertType}`],
-            advisoryRisk: isSos ? 95 : 85,
+            advisoryRisk: isSos ? 99 : 85,
             createdAt: new Date(item.timestamp || Date.now()).toISOString()
           });
         }
@@ -460,12 +553,50 @@ export const subscribeToAlerts = (
     } else {
       lciisAlerts = [];
     }
-    callback([...stdAlerts, ...lciisAlerts]);
+    publishMergedAlerts();
+  });
+
+  const unsubLive = onValue(liveVitalsRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      liveHwAlerts = [];
+      Object.keys(data).forEach((patientId) => {
+        const item = data[patientId];
+        if (!item) return;
+        const isSos = Boolean(item.sos);
+        const isFall = Boolean(item.fall);
+        if (isSos || isFall) {
+          liveHwAlerts.push({
+            id: `alert-hw-${patientId}-${isSos ? 'sos' : 'fall'}`,
+            patientId: patientId,
+            patientName: patientId === 'LCIIS-P-000001' ? 'Eleanor Vance' : `Patient ${patientId}`,
+            ward: 'ICU Unit A',
+            bed: 'Bed 12',
+            type: 'RAPID DETERIORATION',
+            priority: 'CRITICAL',
+            status: 'NEW',
+            summary: isFall
+              ? '🚨 HARDWARE MPU6050 PATIENT FALL DETECTED!'
+              : '🚨 BEDSIDE EMERGENCY SOS BUTTON TRIGGERED!',
+            concerns: [
+              isFall ? 'Free-fall and impact detected by MPU6050 accelerometer' : 'Physical hardware SOS button triggered on GPIO 27',
+              'Immediate clinical nurse and doctor response required'
+            ],
+            advisoryRisk: 99,
+            createdAt: new Date(item.timestamp || Date.now()).toISOString()
+          });
+        }
+      });
+    } else {
+      liveHwAlerts = [];
+    }
+    publishMergedAlerts();
   });
 
   return () => {
     off(alertsRef, 'value', unsubStd);
     off(lciisAlertsRef, 'value', unsubLciis);
+    off(liveVitalsRef, 'value', unsubLive);
   };
 };
 
@@ -484,19 +615,31 @@ export const acknowledgeAlert = async (
 
 export const clearAllAlertsFromDB = async (): Promise<void> => {
   if (!rtdb) return;
-  const alertsRef = ref(rtdb, 'alerts');
-  await remove(alertsRef);
-  const lciisAlertsRef = ref(rtdb, 'LCIIS/alerts');
-  await remove(lciisAlertsRef);
+  try {
+    const alertsRef = ref(rtdb, 'alerts');
+    await remove(alertsRef);
+    const lciisAlertsRef = ref(rtdb, 'LCIIS/alerts');
+    await remove(lciisAlertsRef);
 
-  // Set default NORMAL state at /LCIIS/alerts/current so ESP32 Nurse Watch finds a valid node
-  const defaultAlertRef = ref(rtdb, 'LCIIS/alerts/current');
-  await set(defaultAlertRef, {
-    alert: 'NORMAL',
-    patientId: 'NONE',
-    patient_id: 'NONE',
-    timestamp: Date.now()
-  });
+    // Reset live vitals SOS flags
+    const liveVitalsRef = ref(rtdb, 'liveVitals/LCIIS-P-000001');
+    await update(liveVitalsRef, { sos: false, fall: false, alert: false });
+    const currentRef = ref(rtdb, 'LCIIS/patients/LCIIS-P-000001/current');
+    await update(currentRef, { sos: false, fall: false, alert: false });
+
+    // Set default NORMAL state at /LCIIS/alerts/current so ESP32 Nurse Watch finds a valid node
+    const defaultAlertRef = ref(rtdb, 'LCIIS/alerts/current');
+    await set(defaultAlertRef, {
+      alert: 'NORMAL',
+      sos: false,
+      fall: false,
+      patientId: 'NONE',
+      patient_id: 'NONE',
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.warn('clearAllAlertsFromDB notice:', err);
+  }
 };
 
 // ==========================================
@@ -530,13 +673,59 @@ export const triggerNurseWatchAlert = async (
   alertType: 'SOS' | 'CRITICAL' | 'ALERT' | 'NORMAL' = 'CRITICAL'
 ): Promise<void> => {
   if (!rtdb) return;
-  const alertRef = ref(rtdb, 'LCIIS/alerts/current');
-  await set(alertRef, {
-    alert: alertType,
-    patientId: patientId,
-    patient_id: patientId,
-    timestamp: Date.now()
-  });
+  const now = Date.now();
+  const isSos = alertType === 'SOS';
+  const isEmergency = isSos || alertType === 'CRITICAL' || alertType === 'ALERT';
+
+  try {
+    // 1. Update LCIIS/alerts/current
+    const alertRef = ref(rtdb, 'LCIIS/alerts/current');
+    await set(alertRef, {
+      alert: alertType,
+      sos: isSos,
+      patientId: patientId,
+      patient_id: patientId,
+      timestamp: now
+    });
+
+    // 2. Synchronize to liveVitals/{patientId}
+    const liveVitalsRef = ref(rtdb, `liveVitals/${patientId}`);
+    await update(liveVitalsRef, {
+      sos: isSos,
+      alert: isEmergency,
+      lastUpdated: new Date(now).toISOString()
+    });
+
+    // 3. Synchronize to LCIIS/patients/{patientId}/current
+    const currentRef = ref(rtdb, `LCIIS/patients/${patientId}/current`);
+    await update(currentRef, {
+      sos: isSos,
+      alert: isEmergency,
+      lastUpdated: new Date(now).toISOString()
+    });
+
+    // 4. Create alert record in /alerts if SOS
+    if (isSos) {
+      const alertId = `alert-sos-${now}`;
+      const newAlert: Alert = {
+        id: alertId,
+        patientId: patientId,
+        patientName: patientId === 'LCIIS-P-000001' ? 'Eleanor Vance' : `Patient ${patientId}`,
+        ward: 'ICU Unit A',
+        bed: 'Bed 12',
+        type: 'RAPID DETERIORATION',
+        priority: 'CRITICAL',
+        status: 'NEW',
+        summary: '🚨 EMERGENCY SOS BUTTON ACTIVATED AT BEDSIDE!',
+        concerns: ['Bedside SOS switch pressed', 'Immediate clinical nurse / doctor response required'],
+        advisoryRisk: 99,
+        createdAt: new Date(now).toISOString()
+      };
+      await set(ref(rtdb, `alerts/${alertId}`), newAlert);
+    }
+  } catch (err) {
+    console.warn('triggerNurseWatchAlert error:', err);
+  }
 };
 
 export const ensureMockPatientsExist = async (): Promise<void> => {
@@ -548,18 +737,18 @@ export const ensureMockPatientsExist = async (): Promise<void> => {
       const p1: Patient = {
         id: 'LCIIS-P-000001',
         hospitalId: 'LCIIS-P-000001',
-        name: 'Test Patient',
+        name: 'Eleanor Vance',
         dateOfBirth: '1964-05-14',
         age: 62,
         gender: 'Female',
         phone: '+1 (555) 019-2834',
-        emergencyContact: 'John Patient (+1 555-019-2835)',
+        emergencyContact: 'John Vance (+1 555-019-2835)',
         bloodGroup: 'O+',
         address: '452 Medical Center Way, ICU Wing',
         admissionDate: new Date().toISOString().split('T')[0],
         departmentId: 'dept-icu',
         departmentName: 'Intensive Care Unit',
-        ward: 'ICU',
+        ward: 'ICU Unit A',
         bed: 'Bed 12',
         attendingDoctorId: 'doc-001',
         attendingDoctorName: 'Dr. Sarah Jenkins',
@@ -567,12 +756,18 @@ export const ensureMockPatientsExist = async (): Promise<void> => {
         primaryComplaint: 'Cardiovascular observation & dyspnea',
         allergies: ['Penicillin'],
         existingConditions: ['Hypertension', 'Type 2 Diabetes'],
-        currentStatus: 'MONITOR',
-        advisoryRisk: 42,
+        currentStatus: 'HIGH RISK',
+        advisoryRisk: 74,
+        deviceId: 'ESP32-ICU-001',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
       await set(p1Ref, cleanUndefined(p1));
+    } else {
+      const existing = p1Snap.val();
+      if (!existing.deviceId) {
+        await update(p1Ref, { deviceId: 'ESP32-ICU-001' });
+      }
     }
 
     const p2Ref = ref(rtdb, 'patients/LCIIS-P-000002');

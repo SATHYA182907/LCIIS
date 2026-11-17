@@ -99,6 +99,17 @@ export interface VitalMeasurement {
 }
 
 export interface LiveVitals {
+  deviceId?: string;
+  fingerDetected?: boolean;
+  heartRateValid?: boolean;
+  irValue?: number;
+  redValue?: number;
+  humidity?: VitalMeasurement;
+  accel?: { x: number; y: number; z: number };
+  gyro?: { x: number; y: number; z: number };
+  sos?: boolean;
+  fall?: boolean;
+  alert?: boolean;
   heartRate?: VitalMeasurement;
   spo2?: VitalMeasurement;
   bloodPressure?: {

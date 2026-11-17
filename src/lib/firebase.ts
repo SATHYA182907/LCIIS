@@ -1,5 +1,5 @@
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
-import { getAuth, type Auth } from 'firebase/auth';
+import { getAuth, type Auth, signInWithEmailAndPassword, signInAnonymously } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { getDatabase, type Database } from 'firebase/database';
 
@@ -42,6 +42,48 @@ if (isFirebaseConfigured()) {
   }
 } else {
   console.info('ℹ️ Firebase environment variables missing or incomplete.');
+}
+
+/**
+ * Ensures Firebase Auth session is active before RTDB operations execute.
+ * Uses Arduino device credentials from config or falls back to anonymous authentication.
+ */
+let authPromise: Promise<boolean> | null = null;
+
+export const ensureFirebaseAuth = async (): Promise<boolean> => {
+  if (!auth) return false;
+  if (auth.currentUser) return true;
+  if (authPromise) return authPromise;
+
+  authPromise = (async () => {
+    const defaultEmail = import.meta.env.VITE_FIREBASE_DEFAULT_EMAIL || 'krishnatheking07@gmail.com';
+    const defaultPassword = import.meta.env.VITE_FIREBASE_DEFAULT_PASSWORD || '88888888';
+
+    try {
+      const cred = await signInWithEmailAndPassword(auth!, defaultEmail, defaultPassword);
+      console.log('✅ Firebase Auth authenticated as:', cred.user.email);
+      return true;
+    } catch (err: any) {
+      console.warn('⚠️ Firebase email/password auth failed, trying anonymous auth:', err?.message || err);
+      try {
+        const anonCred = await signInAnonymously(auth!);
+        console.log('✅ Firebase Auth authenticated anonymously:', anonCred.user.uid);
+        return true;
+      } catch (anonErr: any) {
+        console.error('❌ Firebase Auth failed completely:', anonErr?.message || anonErr);
+        return false;
+      }
+    } finally {
+      authPromise = null;
+    }
+  })();
+
+  return authPromise;
+};
+
+// Initiate auto-auth in background
+if (auth) {
+  ensureFirebaseAuth().catch((e) => console.warn('Background auto-auth notice:', e));
 }
 
 const database = rtdb;

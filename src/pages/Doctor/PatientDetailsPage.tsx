@@ -31,7 +31,8 @@ import {
   FlaskConical,
   Bell,
   ArrowRightLeft,
-  History
+  History,
+  ShieldAlert
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -252,6 +253,25 @@ export const PatientDetailsPage: React.FC = () => {
                 className="px-2.5 sm:px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] sm:text-xs font-bold rounded-lg shadow-xs flex items-center space-x-1"
               >
                 <Stethoscope className="w-3.5 h-3.5" /> <span>Action</span>
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const newType = vitals?.sos ? 'NORMAL' : 'SOS';
+                    await triggerWatchAlert(patient.id, newType);
+                  } catch (e: any) {
+                    toast.error('Failed to trigger watch SOS');
+                  }
+                }}
+                className={`px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs font-black rounded-lg shadow-xs flex items-center space-x-1 transition-all ${
+                  vitals?.sos
+                    ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse'
+                    : 'bg-red-100 hover:bg-red-200 text-red-800 border border-red-300'
+                }`}
+                title="Trigger Emergency SOS on website and hardware"
+              >
+                <ShieldAlert className="w-3.5 h-3.5" />
+                <span>{vitals?.sos ? '🚨 Clear SOS' : '🚨 Trigger SOS'}</span>
               </button>
               <button
                 onClick={async () => {

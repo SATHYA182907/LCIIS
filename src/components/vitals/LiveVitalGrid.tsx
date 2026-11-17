@@ -32,10 +32,13 @@ export const LiveVitalGrid: React.FC<LiveVitalGridProps> = ({ vitals }) => {
           )}
         </div>
         <div className={`text-xl sm:text-2xl font-black tracking-tight ${hasHR ? 'text-slate-900' : 'text-slate-400'}`}>
-          {hasHR ? vitals.heartRate?.value : '--'} <span className="text-[11px] font-normal text-gray-400">BPM</span>
+          {hasHR ? (vitals?.fingerDetected === false ? <span className="text-amber-600 text-sm font-bold">Place Finger</span> : vitals.heartRate?.value) : '--'}{' '}
+          {vitals?.fingerDetected !== false && <span className="text-[11px] font-normal text-gray-400">BPM</span>}
         </div>
-        <div className={`text-[10px] font-medium mt-1 flex items-center justify-between gap-1 overflow-hidden ${hasHR ? 'text-teal-700' : 'text-slate-400'}`}>
-          <span className="truncate font-semibold">{hasHR ? '● LIVE' : 'UNLINKED'}</span>
+        <div className={`text-[10px] font-medium mt-1 flex items-center justify-between gap-1 overflow-hidden ${
+          hasHR && vitals?.fingerDetected === false ? 'text-amber-600' : hasHR ? 'text-teal-700' : 'text-slate-400'
+        }`}>
+          <span className="truncate font-semibold">{hasHR && vitals?.fingerDetected === false ? '○ NO FINGER' : hasHR ? '● LIVE' : 'UNLINKED'}</span>
           <span className="shrink-0 font-mono text-[9px]">{hasHR ? formatTime(vitals.heartRate?.timestamp) : ''}</span>
         </div>
       </div>
@@ -116,7 +119,7 @@ export const LiveVitalGrid: React.FC<LiveVitalGridProps> = ({ vitals }) => {
           {hasTemp ? vitals.temperature?.value : '--'}<span className="text-[11px] font-normal text-gray-400">°C</span>
         </div>
         <div className={`text-[10px] font-medium mt-1 flex items-center justify-between gap-1 overflow-hidden ${hasTemp ? 'text-orange-700' : 'text-slate-400'}`}>
-          <span className="truncate font-semibold">{hasTemp ? '● LIVE' : 'UNLINKED'}</span>
+          <span className="truncate font-semibold">{hasTemp ? `● LIVE${vitals?.humidity ? ` (${vitals.humidity.value}% RH)` : ''}` : 'UNLINKED'}</span>
           <span className="shrink-0 font-mono text-[9px]">{hasTemp ? formatTime(vitals.temperature?.timestamp) : ''}</span>
         </div>
       </div>
