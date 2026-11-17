@@ -79,7 +79,14 @@ export const LaboratoryDashboard: React.FC = () => {
       notes,
     });
 
-    toast.success(`Lab result saved for ${selectedPatientId}. Clinical pipeline recalculated.`);
+    const numVal = Number(value);
+    const numLow = Number(refLow);
+    const numHigh = Number(refHigh);
+    const isExceeded = (!isNaN(numHigh) && numHigh > 0 && numVal > numHigh) || (!isNaN(numLow) && numLow > 0 && numVal < numLow);
+
+    if (!isExceeded) {
+      toast.success(`Lab result saved for ${selectedPatientId}. Value is within normal reference range.`);
+    }
   };
 
   return (

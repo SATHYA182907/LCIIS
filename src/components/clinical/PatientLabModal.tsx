@@ -117,7 +117,13 @@ export const PatientLabModal: React.FC<PatientLabModalProps> = ({ patientId, isO
     });
 
     setIsAddFormOpen(false);
-    toast.success(`New ${newTestName} reading (${newValue} ${newUnit}) saved for ${patient.name}.`);
+    const numVal = Number(newValue);
+    const numLow = Number(newRefLow);
+    const numHigh = Number(newRefHigh);
+    const isExceeded = (!isNaN(numHigh) && numHigh > 0 && numVal > numHigh) || (!isNaN(numLow) && numLow > 0 && numVal < numLow);
+    if (!isExceeded) {
+      toast.success(`New ${newTestName} reading (${newValue} ${newUnit}) saved for ${patient.name}.`);
+    }
   };
 
   return (

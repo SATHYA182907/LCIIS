@@ -5,6 +5,7 @@ import type {
   LaboratoryResult,
   LiveVitals,
   Alert,
+  AlertPriority,
   InventoryItem,
   StockMovement,
   DeviceRecord,
@@ -51,7 +52,8 @@ import {
   seedInitialDatabaseIfEmpty,
   ensureMockPatientsExist,
   triggerNurseWatchAlert,
-  purgeUnlinkedVitalsFromRTDB
+  purgeUnlinkedVitalsFromRTDB,
+  createAlert
 } from '../services/firebaseService';
 
 import { TrendAnalysisEngine } from '../services/trendService';
@@ -596,14 +598,114 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
   }, [isFirebaseConnected]);
 
-  const addLaboratoryResult = useCallback((res: Omit<LaboratoryResult, 'id' | 'createdAt'>) => {
+  const addLaboratoryResult = useCallback(async (res: Omit<LaboratoryResult, 'id' | 'createdAt'>) => {
     const fullRes: LaboratoryResult = {
       ...res,
       id: `lab-${Date.now()}`,
       createdAt: new Date().toISOString(),
     };
     setLabResults((prev) => [fullRes, ...prev]);
-  }, []);
+
+    // Analyze whether the laboratory vital exceeds clinical reference thresholds
+    const val = Number(res.value);
+    const low = Number(res.referenceLow);
+    const high = Number(res.referenceHigh);
+
+    const isExceedHigh = !isNaN(high) && high > 0 && val > high;
+    const isExceedLow = !isNaN(low) && low > 0 && val < low;
+
+    if (isExceedHigh || isExceedLow) {
+      // Find patient details
+      const targetPatient =
+        patients.find((p) => p.id === res.patientId || p.hospitalId === res.patientId) ||
+        (res.patientId === 'P12345' || res.patientId === 'LCIIS-P-000001'
+          ? patients.find((p) => p.id === 'LCIIS-P-000001' || p.hospitalId === 'LCIIS-P-000001')
+          : undefined);
+
+      const patientName = targetPatient?.name || `Patient ${res.patientId}`;
+      const patientWard = targetPatient?.ward || 'ICU Unit A';
+      const patientBed = targetPatient?.bed || 'Bed 12';
+      const patientIdClean = targetPatient?.id || res.patientId;
+
+      // Determine criticality
+      const criticalHigh = !isNaN(high) && high > 0 && val >= high * 1.35;
+      const criticalLow = !isNaN(low) && low > 0 && val <= low * 0.75;
+      const isCriticalTest = ['potassium', 'lactate', 'creatinine', 'troponin', 'd-dimer'].some((t) =>
+        res.testName.toLowerCase().includes(t)
+      );
+      const isCritical = criticalHigh || criticalLow || (isCriticalTest && (val >= high * 1.2 || val <= low * 0.8));
+
+      const priority: AlertPriority = isCritical ? 'CRITICAL' : 'HIGH';
+      const advisoryRisk = isCritical ? 92 : 78;
+
+      const deviationDetail = isExceedHigh
+        ? `HIGH (+${(val - high).toFixed(2)} ${res.unit} above upper threshold of ${high} ${res.unit})`
+        : `LOW (-${(low - val).toFixed(2)} ${res.unit} below lower threshold of ${low} ${res.unit})`;
+
+      const alertId = `alert-lab-${Date.now()}`;
+      const newAlert: Alert = {
+        id: alertId,
+        patientId: patientIdClean,
+        patientName,
+        ward: patientWard,
+        bed: patientBed,
+        type: 'LABORATORY TREND',
+        priority,
+        status: 'NEW',
+        summary: `🚨 LAB THRESHOLD EXCEEDED: ${res.testName} (${val} ${res.unit}) is ${deviationDetail}!`,
+        concerns: [
+          `Laboratory ${res.category} panel: ${res.testName} resulted at ${val} ${res.unit} outside normal reference limits [${low} - ${high} ${res.unit}]`,
+          `Sample entered by ${res.technicianName || 'Laboratory Staff'} at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+          isCritical
+            ? `CRITICAL LAB VALUE: Extreme physiological deviation indicates high risk of clinical deterioration`
+            : `Abnormal finding: Physician review and clinical evaluation required`
+        ],
+        advisoryRisk,
+        createdAt: new Date().toISOString()
+      };
+
+      // 1. Add alert to local React state
+      setAlerts((prev) => [newAlert, ...prev]);
+
+      // 2. Persist alert to Firebase RTDB so it broadcasts to all doctor/nurse screens in real time
+      if (isFirebaseConnected) {
+        try {
+          await createAlert(newAlert);
+        } catch (err) {
+          console.warn('Failed to save lab alert to Firebase:', err);
+        }
+      }
+
+      // 3. Escalate patient risk status if currently STABLE or MONITOR
+      if (targetPatient) {
+        const newStatus = isCritical ? 'CRITICAL' : 'HIGH RISK';
+        const updatedRisk = Math.max(targetPatient.advisoryRisk || 0, advisoryRisk);
+        setPatients((prev) =>
+          prev.map((p) =>
+            p.id === targetPatient.id
+              ? { ...p, currentStatus: newStatus, advisoryRisk: updatedRisk, updatedAt: new Date().toISOString() }
+              : p
+          )
+        );
+        if (isFirebaseConnected) {
+          try {
+            await updatePatientInDB(targetPatient.id, {
+              currentStatus: newStatus,
+              advisoryRisk: updatedRisk
+            });
+          } catch (err) {
+            console.warn('Failed to update patient risk status in Firebase:', err);
+          }
+        }
+      }
+
+      // 4. Dispatch prominent software alert message
+      toast.error(`🚨 LAB VITAL THRESHOLD EXCEEDED!`, {
+        description: `${res.testName}: ${val} ${res.unit} is ${deviationDetail} for ${patientName} (${patientWard} • ${patientBed}). High-priority alert broadcast!`,
+        duration: 9000
+      });
+    }
+  }, [patients, isFirebaseConnected]);
 
   const updateLiveVitals = useCallback(async (patientId: string, vitals: any) => {
     if (isFirebaseConnected) {
