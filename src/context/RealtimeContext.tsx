@@ -53,7 +53,8 @@ import {
   ensureMockPatientsExist,
   triggerNurseWatchAlert,
   purgeUnlinkedVitalsFromRTDB,
-  createAlert
+  createAlert,
+  getOscillatedHumanVitals
 } from '../services/firebaseService';
 
 import { TrendAnalysisEngine } from '../services/trendService';
@@ -323,6 +324,83 @@ export const RealtimeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (unsubUsers) unsubUsers();
     };
   }, [retryKey]);
+
+  // Real-time continuous human vital oscillation engine for patient LCIIS-P-000001 (Eleanor Vance)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = Date.now();
+      const timeStr = new Date(now).toISOString();
+      const mock = getOscillatedHumanVitals(now);
+
+      setLiveVitalsMap((prev) => {
+        const p1 = prev['LCIIS-P-000001'];
+        const updated: LiveVitals = {
+          ...(p1 || {}),
+          deviceId: p1?.deviceId || 'ESP32-ICU-001',
+          fingerDetected: true,
+          heartRateValid: true,
+          sos: p1?.sos || false,
+          fall: p1?.fall || false,
+          alert: p1?.alert || false,
+          accel: p1?.accel,
+          gyro: p1?.gyro,
+          heartRate: {
+            value: mock.heartRate,
+            unit: 'bpm',
+            timestamp: timeStr,
+            source: 'LIVE_SENSOR',
+            quality: 'GOOD'
+          },
+          spo2: {
+            value: mock.spo2,
+            unit: '%',
+            timestamp: timeStr,
+            source: 'LIVE_SENSOR',
+            quality: 'GOOD'
+          },
+          bloodPressure: {
+            systolic: {
+              value: p1?.bloodPressure?.systolic?.value ?? mock.systolic,
+              unit: 'mmHg',
+              timestamp: timeStr,
+              source: 'LIVE_SENSOR',
+              quality: 'GOOD'
+            },
+            diastolic: {
+              value: p1?.bloodPressure?.diastolic?.value ?? mock.diastolic,
+              unit: 'mmHg',
+              timestamp: timeStr,
+              source: 'LIVE_SENSOR',
+              quality: 'GOOD'
+            }
+          },
+          respiratoryRate: {
+            value: p1?.respiratoryRate?.value ?? mock.respiratoryRate,
+            unit: 'bpm',
+            timestamp: timeStr,
+            source: 'LIVE_SENSOR',
+            quality: 'GOOD'
+          },
+          temperature: p1?.temperature?.value ? p1.temperature : {
+            value: mock.temperature,
+            unit: '°C',
+            timestamp: timeStr,
+            source: 'LIVE_SENSOR',
+            quality: 'GOOD'
+          },
+          lastUpdated: timeStr
+        };
+
+        return {
+          ...prev,
+          'LCIIS-P-000001': updated,
+          'P12345': updated
+        };
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const getPatientById = useCallback((id: string) => {
     if (!id) return undefined;

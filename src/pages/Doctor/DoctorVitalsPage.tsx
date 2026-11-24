@@ -106,7 +106,7 @@ export const DoctorVitalsPage: React.FC = () => {
                       <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
                         <div className="text-[10px] text-gray-400 font-bold uppercase">Oxygen SpO2</div>
                         <div className={`font-black text-base mt-0.5 ${(v.spo2?.value || 100) < 94 ? 'text-red-600' : 'text-slate-900'}`}>
-                          {v.spo2?.value}%
+                          {v.spo2?.value !== undefined ? `${v.spo2.value}%` : '--%'}
                         </div>
                       </div>
 
@@ -120,7 +120,7 @@ export const DoctorVitalsPage: React.FC = () => {
                       <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
                         <div className="text-[10px] text-gray-400 font-bold uppercase">Resp Rate</div>
                         <div className="font-bold text-slate-900 text-sm mt-0.5">
-                          {v.respiratoryRate?.value} <span className="text-[10px] font-normal text-gray-500">/min</span>
+                          {v.respiratoryRate?.value !== undefined ? v.respiratoryRate.value : '--'} <span className="text-[10px] font-normal text-gray-500">/min</span>
                         </div>
                       </div>
                     </div>
